@@ -1,6 +1,8 @@
 {
   "functions": {
-    "api/signals.js": { "maxDuration": 60 }
+    "api/signals.js": { "maxDuration": 60 },
+    "api/react.js": { "maxDuration": 15 },
+    "api/translate.js": { "maxDuration": 15 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
