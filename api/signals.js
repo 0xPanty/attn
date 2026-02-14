@@ -17,14 +17,22 @@ const LANGUAGE_MAP = {
 // --- Try reading from KV cache first ---
 async function kvGet(key) {
   try {
-    const res = await fetch(`${KV_REST_API_URL}/get/${key}`, {
+    const res = await fetch(`${KV_REST_API_URL}/get/${encodeURIComponent(key)}`, {
       headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}` },
     });
     if (!res.ok) return null;
     const data = await res.json();
-    if (!data.result) return null;
-    // Upstash returns the stored string in data.result
-    return typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
+    let result = data.result;
+    if (!result) return null;
+    // Unwrap: Upstash may return string or nested object
+    if (typeof result === 'string') {
+      try { result = JSON.parse(result); } catch { return null; }
+    }
+    // Handle case where result has a .value wrapper
+    if (result.value && !result.signals) {
+      result = typeof result.value === 'string' ? JSON.parse(result.value) : result.value;
+    }
+    return result;
   } catch {
     return null;
   }

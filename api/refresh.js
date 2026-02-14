@@ -16,11 +16,14 @@ const LANGUAGE_MAP = {
 };
 
 async function kvSet(key, value, ttlSeconds) {
-  await fetch(`${KV_REST_API_URL}`, {
-    method: 'POST',
+  const res = await fetch(`${KV_REST_API_URL}/set/${encodeURIComponent(key)}?EX=${ttlSeconds}`, {
+    method: 'PUT',
     headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(['SET', key, value, 'EX', ttlSeconds]),
+    body: value,
   });
+  if (!res.ok) {
+    console.error('KV SET failed:', res.status, await res.text());
+  }
 }
 
 async function fetchTrendingCasts() {
