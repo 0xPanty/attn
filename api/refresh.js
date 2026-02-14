@@ -161,6 +161,7 @@ Below are ${castsForAnalysis.length} posts from trending feed, developer/AI chan
 
 Your job:
 1. Score each post 1-10 for "information density" (10 = very valuable technical insight, announcement, analysis; 1 = casual chat, self-promotion, no substance)
+   Score 1-3 for: airdrops, token promotions, "follow these accounts", shill posts, giveaways, hashtag spam, referral links, anything asking users to claim/mint/buy tokens
 2. For posts scoring 7+, write a concise 2-3 sentence English summary
 3. Translate each summary to: ${transLangs.map((l) => LANGUAGE_MAP[l]).join(', ')}
 
