@@ -23,6 +23,16 @@ async function kvSet(key, value, ttlSeconds) {
   });
 }
 
+async function fetchTrendingCasts() {
+  const res = await fetch(
+    'https://api.neynar.com/v2/farcaster/feed/trending?limit=50&time_window=6h',
+    { headers: { accept: 'application/json', api_key: NEYNAR_API_KEY } }
+  );
+  if (!res.ok) return [];
+  const data = await res.json();
+  return (data.casts || []).map((cast) => ({ ...cast, _channel: 'trending' }));
+}
+
 async function fetchChannelCasts(channel) {
   const res = await fetch(
     `https://api.neynar.com/v2/farcaster/feed/channels?channel_ids=${channel}&with_recasts=false&limit=50`,
@@ -66,7 +76,7 @@ async function analyzeWithGemini(casts, targetLang) {
 
   const prompt = `You are a signal analyst for Farcaster (a crypto social network).
 
-Below are ${castsForAnalysis.length} posts from developer/AI channels.
+Below are ${castsForAnalysis.length} posts from trending feed, developer/AI channels, and followed users.
 
 Your job:
 1. Score each post 1-10 for "information density" (10 = very valuable technical insight, announcement, analysis; 1 = casual chat, self-promotion, no substance)
@@ -148,8 +158,12 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    // Fetch all channel casts
-    const allCasts = (await Promise.all(CHANNELS.map(fetchChannelCasts))).flat();
+    // Fetch trending + channel casts
+    const [trendingCasts, ...channelResults] = await Promise.all([
+      fetchTrendingCasts(),
+      ...CHANNELS.map(fetchChannelCasts),
+    ]);
+    const allCasts = [...trendingCasts, ...channelResults.flat()];
     const filtered = basicFilter(allCasts);
     const unique = deduplicate(filtered);
 
