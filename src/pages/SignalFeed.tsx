@@ -5,9 +5,10 @@ import type { Signal, Language } from '@/types';
 
 interface SignalFeedProps {
   language: Language;
+  watchlistFids: number[];
 }
 
-export function SignalFeed({ language }: SignalFeedProps) {
+export function SignalFeed({ language, watchlistFids }: SignalFeedProps) {
   const [signals, setSignals] = useState<Signal[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -20,7 +21,8 @@ export function SignalFeed({ language }: SignalFeedProps) {
       else setLoading(true);
       setError(null);
 
-      const res = await fetch(`/api/signals?lang=${language}`);
+      const fidsParam = watchlistFids.length > 0 ? `&fids=${watchlistFids.join(',')}` : '';
+      const res = await fetch(`/api/signals?lang=${language}${fidsParam}`);
       if (!res.ok) throw new Error('Failed to fetch signals');
 
       const data = await res.json();
@@ -37,7 +39,7 @@ export function SignalFeed({ language }: SignalFeedProps) {
 
   useEffect(() => {
     fetchSignals();
-  }, [language]);
+  }, [language, watchlistFids.join(',')]);
 
   if (loading) {
     return (

@@ -148,6 +148,36 @@ function buildSignals(casts, analyses) {
     .filter(Boolean);
 }
 
+// --- Step 6: Fetch casts from watchlist users ---
+async function fetchUserCasts(fids) {
+  if (!fids || fids.length === 0) return [];
+
+  const allCasts = [];
+  const batchSize = 5;
+
+  for (let i = 0; i < fids.length; i += batchSize) {
+    const batch = fids.slice(i, i + batchSize);
+    const results = await Promise.all(
+      batch.map(async (fid) => {
+        try {
+          const response = await fetch(
+            `https://api.neynar.com/v2/farcaster/feed/user/${fid}/casts?limit=10&include_replies=false`,
+            { headers: { accept: 'application/json', api_key: NEYNAR_API_KEY } }
+          );
+          if (!response.ok) return [];
+          const data = await response.json();
+          return (data.casts || []).map((c) => ({ ...c, _channel: 'following' }));
+        } catch {
+          return [];
+        }
+      })
+    );
+    allCasts.push(...results.flat());
+  }
+
+  return allCasts;
+}
+
 // --- Main handler ---
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -156,11 +186,14 @@ export default async function handler(req, res) {
 
   try {
     const lang = req.query.lang || 'en';
+    const fids = req.query.fids ? req.query.fids.split(',').map(Number).filter(Boolean) : [];
 
-    const allCasts = (
-      await Promise.all(CHANNELS.map(fetchChannelCasts))
-    ).flat();
+    const [channelCasts, userCasts] = await Promise.all([
+      Promise.all(CHANNELS.map(fetchChannelCasts)).then((r) => r.flat()),
+      fetchUserCasts(fids),
+    ]);
 
+    const allCasts = [...channelCasts, ...userCasts];
     const filtered = basicFilter(allCasts);
     const unique = deduplicate(filtered);
     const analyses = await analyzeWithGemini(unique, lang);
@@ -174,6 +207,7 @@ export default async function handler(req, res) {
         afterDedup: unique.length,
         finalSignals: signals.length,
         channels: CHANNELS,
+        watchlistFids: fids,
         language: lang,
         timestamp: new Date().toISOString(),
       },
