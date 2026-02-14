@@ -28,7 +28,7 @@ async function kvSet(key, value, ttlSeconds) {
 
 async function fetchTrendingCasts() {
   const res = await fetch(
-    'https://api.neynar.com/v2/farcaster/feed/trending?limit=50&time_window=6h',
+    'https://api.neynar.com/v2/farcaster/feed/trending/?limit=10&time_window=6h&provider=neynar',
     { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
   );
   if (!res.ok) {
