@@ -52,7 +52,7 @@ async function fetchGlobalTrending() {
 async function fetchChannelCasts(channel) {
   const res = await fetch(
     `https://api.neynar.com/v2/farcaster/feed/channels?channel_ids=${channel}&with_recasts=false&limit=50`,
-    { headers: { accept: 'application/json', api_key: NEYNAR_API_KEY } }
+    { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
   );
   if (!res.ok) return [];
   const data = await res.json();
@@ -70,7 +70,7 @@ async function fetchUserCasts(fids) {
         try {
           const response = await fetch(
             `https://api.neynar.com/v2/farcaster/feed/user/${fid}/casts?limit=10&include_replies=false`,
-            { headers: { accept: 'application/json', api_key: NEYNAR_API_KEY } }
+            { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
           );
           if (!response.ok) return [];
           const data = await response.json();
