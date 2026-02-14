@@ -233,10 +233,11 @@ function extractQuotedCast(cast) {
 }
 
 function buildSignals(casts, analyses) {
-  return analyses
-    .filter((a) => a.score >= 7)
+  const qualified = analyses.filter((a) => a.score >= 7);
+  const sorted = (qualified.length >= 3 ? qualified : analyses.slice().sort((a, b) => b.score - a.score).slice(0, 3))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
+    .slice(0, 10);
+  return sorted
     .map((analysis) => {
       const cast = casts[analysis.index];
       if (!cast) return null;
