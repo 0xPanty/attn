@@ -145,15 +145,15 @@ function stratifiedSample(casts) {
   return [...top, ...rest.slice(0, 5)];
 }
 
-async function analyzeWithGemini(casts, targetLang) {
-  if (casts.length === 0) return [];
+async function analyzeWithGemini(casts, languages) {
+  if (casts.length === 0) return {};
   const castsForAnalysis = casts.slice(0, 30);
   const castTexts = castsForAnalysis.map((c, i) => (
     `[${i}] @${c.author?.username || 'unknown'} (/${c._channel}):\n${c.text}\n---`
   )).join('\n');
 
-  const langName = LANGUAGE_MAP[targetLang] || 'English';
-  const needsTranslation = targetLang !== 'en';
+  const transLangs = languages.filter((l) => l !== 'en');
+  const transFields = transLangs.map((l) => `"summary_${l}": "${LANGUAGE_MAP[l]} translation"`).join(',\n    ');
 
   const prompt = `You are a signal analyst for Farcaster (a crypto social network).
 
@@ -161,16 +161,16 @@ Below are ${castsForAnalysis.length} posts from trending feed, developer/AI chan
 
 Your job:
 1. Score each post 1-10 for "information density" (10 = very valuable technical insight, announcement, analysis; 1 = casual chat, self-promotion, no substance)
-2. For posts scoring 7+, write a concise 2-3 sentence summary
-${needsTranslation ? `3. Translate each summary to ${langName}` : ''}
+2. For posts scoring 7+, write a concise 2-3 sentence English summary
+3. Translate each summary to: ${transLangs.map((l) => LANGUAGE_MAP[l]).join(', ')}
 
 Return ONLY valid JSON array, no markdown:
 [
   {
     "index": 0,
     "score": 8,
-    "summary": "English summary here"${needsTranslation ? `,
-    "translatedSummary": "Translated summary here"` : ''}
+    "summary": "English summary here",
+    ${transFields}
   }
 ]
 
@@ -191,15 +191,15 @@ ${castTexts}`;
     }
   );
 
-  if (!res.ok) return [];
+  if (!res.ok) return {};
   const data = await res.json();
   const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   try {
     const cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const results = JSON.parse(cleaned);
-    return Array.isArray(results) ? results : [];
+    return Array.isArray(results) ? results : {};
   } catch {
-    return [];
+    return {};
   }
 }
 
@@ -233,11 +233,10 @@ function extractQuotedCast(cast) {
 }
 
 function buildSignals(casts, analyses) {
-  const qualified = analyses.filter((a) => a.score >= 7);
-  const sorted = (qualified.length >= 3 ? qualified : analyses.slice().sort((a, b) => b.score - a.score).slice(0, 3))
+  return analyses
+    .filter((a) => a.score >= 7)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 10);
-  return sorted
+    .slice(0, 10)
     .map((analysis) => {
       const cast = casts[analysis.index];
       if (!cast) return null;
@@ -281,11 +280,20 @@ export default async function handler(req, res) {
     const unique = deduplicate(filtered);
     const candidates = stratifiedSample(unique);
 
-    // Generate signals for each language and cache
+    // Single Gemini call for all languages
+    const analyses = await analyzeWithGemini(candidates, LANGUAGES);
+    if (!Array.isArray(analyses)) {
+      return res.status(500).json({ error: 'Gemini analysis failed' });
+    }
+
+    // Build and cache signals for each language
     let firstSignals = [];
     for (const lang of LANGUAGES) {
-      const analyses = await analyzeWithGemini(candidates, lang);
-      const signals = buildSignals(candidates, analyses);
+      const langAnalyses = analyses.map((a) => ({
+        ...a,
+        translatedSummary: lang !== 'en' ? (a[`summary_${lang}`] || null) : null,
+      }));
+      const signals = buildSignals(candidates, langAnalyses);
       if (lang === LANGUAGES[0]) firstSignals = signals;
 
       const cacheData = JSON.stringify({

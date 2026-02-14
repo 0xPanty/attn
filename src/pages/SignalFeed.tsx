@@ -77,8 +77,8 @@ export function SignalFeed({ language, watchlistFids }: SignalFeedProps) {
 
       {!error && signals.length === 0 && (
         <div className="px-4 py-16 text-center">
-          <p className="text-sm text-white/30 font-mono">no signals today.</p>
-          <p className="text-xs text-white/15 mt-2">that's okay — silence is data too.</p>
+          <p className="text-sm text-white/30 font-mono">quiet day on Farcaster.</p>
+          <p className="text-xs text-white/15 mt-2">nothing passed the signal filter — check back later.</p>
         </div>
       )}
 
