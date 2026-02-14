@@ -113,7 +113,10 @@ function deduplicate(casts) {
 }
 
 function engagementScore(cast) {
-  return (cast.replies?.count || 0) * 2 + (cast.reactions?.likes_count || 0);
+  const base = (cast.replies?.count || 0) * 2 + (cast.reactions?.likes_count || 0);
+  const hoursAgo = (Date.now() - new Date(cast.timestamp || 0).getTime()) / 3600000;
+  const recency = Math.max(0, 1 - hoursAgo / 24);
+  return base + recency * 5;
 }
 
 function stratifiedSample(casts) {
@@ -297,7 +300,7 @@ export default async function handler(req, res) {
         },
       });
 
-      await kvSet(`signals:${lang}`, cacheData, 2100);
+      await kvSet(`signals:${lang}`, cacheData, 2400);
     }
 
     // Track author stats
