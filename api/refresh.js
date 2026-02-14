@@ -112,6 +112,30 @@ function deduplicate(casts) {
   });
 }
 
+function engagementScore(cast) {
+  return (cast.replies?.count || 0) * 2 + (cast.reactions?.likes_count || 0);
+}
+
+function stratifiedSample(casts) {
+  const channelCasts = casts.filter((c) => c._channel !== 'trending' && c._channel !== 'following');
+  const trendingCasts = casts.filter((c) => c._channel === 'trending');
+  const userCasts = casts.filter((c) => c._channel === 'following');
+
+  const sortByEng = (a, b) => engagementScore(b) - engagementScore(a);
+  channelCasts.sort(sortByEng);
+  trendingCasts.sort(sortByEng);
+  userCasts.sort(sortByEng);
+
+  const sampled = [
+    ...channelCasts.slice(0, 15),
+    ...trendingCasts.slice(0, 10),
+    ...userCasts.slice(0, 5),
+  ];
+
+  sampled.sort(sortByEng);
+  return sampled.slice(0, 30);
+}
+
 async function analyzeWithGemini(casts, targetLang) {
   if (casts.length === 0) return [];
   const castsForAnalysis = casts.slice(0, 30);
@@ -245,12 +269,13 @@ export default async function handler(req, res) {
     const allCasts = [...trendingCasts, ...channelResults.flat()];
     const filtered = basicFilter(allCasts);
     const unique = deduplicate(filtered);
+    const candidates = stratifiedSample(unique);
 
     // Generate signals for each language and cache
     let firstSignals = [];
     for (const lang of LANGUAGES) {
-      const analyses = await analyzeWithGemini(unique, lang);
-      const signals = buildSignals(unique, analyses);
+      const analyses = await analyzeWithGemini(candidates, lang);
+      const signals = buildSignals(candidates, analyses);
       if (lang === LANGUAGES[0]) firstSignals = signals;
 
       const cacheData = JSON.stringify({
