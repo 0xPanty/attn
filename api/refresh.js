@@ -4,7 +4,7 @@ const KV_REST_API_URL = process.env.KV_REST_API_URL;
 const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN;
 
 const CHANNELS = ['dev', 'ai', 'miniapps', 'build'];
-const LANGUAGES = ['en', 'zh', 'ja', 'ko', 'es', 'fr'];
+const LANGUAGES = ['en', 'zh'];
 
 const LANGUAGE_MAP = {
   en: 'English',
@@ -16,10 +16,10 @@ const LANGUAGE_MAP = {
 };
 
 async function kvSet(key, value, ttlSeconds) {
-  await fetch(`${KV_REST_API_URL}/set/${key}`, {
+  await fetch(`${KV_REST_API_URL}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ value, ex: ttlSeconds }),
+    body: JSON.stringify(['SET', key, value, 'EX', ttlSeconds]),
   });
 }
 

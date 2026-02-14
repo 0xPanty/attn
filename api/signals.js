@@ -22,7 +22,9 @@ async function kvGet(key) {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.result || null;
+    if (!data.result) return null;
+    // Upstash returns the stored string in data.result
+    return typeof data.result === 'string' ? JSON.parse(data.result) : data.result;
   } catch {
     return null;
   }
@@ -208,13 +210,10 @@ export default async function handler(req, res) {
     // If no watchlist, try cache first
     if (fids.length === 0) {
       const cached = await kvGet(`signals:${lang}`);
-      if (cached) {
-        try {
-          const parsed = typeof cached === 'string' ? JSON.parse(cached) : cached;
-          parsed.meta = parsed.meta || {};
-          parsed.meta.cached = true;
-          return res.status(200).json(parsed);
-        } catch {}
+      if (cached && cached.signals) {
+        cached.meta = cached.meta || {};
+        cached.meta.cached = true;
+        return res.status(200).json(cached);
       }
     }
 
