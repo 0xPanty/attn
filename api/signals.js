@@ -130,7 +130,13 @@ function stratifiedSample(casts) {
   ];
 
   sampled.sort(sortByEng);
-  return sampled.slice(0, 30);
+  const top = sampled.slice(0, 25);
+  const rest = sampled.slice(25);
+  for (let i = rest.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  return [...top, ...rest.slice(0, 5)];
 }
 
 async function analyzeWithGemini(casts, targetLang) {
