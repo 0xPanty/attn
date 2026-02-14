@@ -23,11 +23,11 @@ export function ReplyModal({ authorUsername, castHash, onClose, onSend }: ReplyM
       const res = await fetch('/api/translate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: input, targetLang: 'en' }),
+        body: JSON.stringify({ text: input, lang: 'en' }),
       });
       if (!res.ok) throw new Error('Translation failed');
       const data = await res.json();
-      setTranslatedPreview(data.translated);
+      setTranslatedPreview(data.translation);
     } catch {
       setError('Translation failed');
     } finally {

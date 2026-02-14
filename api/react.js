@@ -17,7 +17,7 @@ export default async function handler(req, res) {
         headers: {
           accept: 'application/json',
           'content-type': 'application/json',
-          api_key: NEYNAR_API_KEY,
+          'x-api-key': NEYNAR_API_KEY,
         },
         body: JSON.stringify({
           signer_uuid: req.body.signerUuid,
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
         headers: {
           accept: 'application/json',
           'content-type': 'application/json',
-          api_key: NEYNAR_API_KEY,
+          'x-api-key': NEYNAR_API_KEY,
         },
         body: JSON.stringify({
           signer_uuid: req.body.signerUuid,
@@ -56,6 +56,30 @@ export default async function handler(req, res) {
         const err = await response.text();
         console.error('Neynar reply error:', err);
         return res.status(response.status).json({ error: 'Reply failed' });
+      }
+
+      return res.status(200).json({ success: true });
+    }
+
+    if (type === 'recast') {
+      const response = await fetch('https://api.neynar.com/v2/farcaster/reaction', {
+        method: 'POST',
+        headers: {
+          accept: 'application/json',
+          'content-type': 'application/json',
+          'x-api-key': NEYNAR_API_KEY,
+        },
+        body: JSON.stringify({
+          signer_uuid: req.body.signerUuid,
+          reaction_type: 'recast',
+          target: castHash,
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.text();
+        console.error('Neynar recast error:', err);
+        return res.status(response.status).json({ error: 'Recast failed' });
       }
 
       return res.status(200).json({ success: true });

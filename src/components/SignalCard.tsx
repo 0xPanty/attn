@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ExternalLink, Heart, MessageCircle, ChevronDown, ChevronUp, Languages } from 'lucide-react';
+import { ExternalLink, Heart, MessageCircle, Repeat2, ChevronDown, ChevronUp, Languages } from 'lucide-react';
 import { ReplyModal } from '@/components/ReplyModal';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Signal, Language } from '@/types';
@@ -10,9 +10,11 @@ interface SignalCardProps {
 }
 
 export function SignalCard({ signal, language }: SignalCardProps) {
-  const { user } = useAuth();
+  const { user, signerUuid, signerStatus, requestSigner } = useAuth();
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(signal.likes);
+  const [recasted, setRecasted] = useState(false);
+  const [recastCount, setRecastCount] = useState(signal.recasts);
   const [showReply, setShowReply] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
   const [translatedText, setTranslatedText] = useState<string | null>(null);
@@ -24,8 +26,21 @@ export function SignalCard({ signal, language }: SignalCardProps) {
 
   const timeAgo = getTimeAgo(signal.timestamp);
 
+  const ensureSigner = async (): Promise<string | null> => {
+    if (signerStatus === 'approved' && signerUuid) return signerUuid;
+    if (signerStatus === 'pending') {
+      alert('Signer pending approval. Please approve in Warpcast first.');
+      return null;
+    }
+    const uuid = await requestSigner();
+    if (!uuid) alert('Failed to create signer. Please try again.');
+    return null; // will be available after approval
+  };
+
   const handleLike = async () => {
     if (liked || !user) return;
+    const uuid = await ensureSigner();
+    if (!uuid) return;
     setLiked(true);
     setLikeCount((c) => c + 1);
     try {
@@ -36,6 +51,7 @@ export function SignalCard({ signal, language }: SignalCardProps) {
           fid: user.fid,
           castHash: signal.hash,
           type: 'like',
+          signerUuid: uuid,
         }),
       });
     } catch {
@@ -44,8 +60,33 @@ export function SignalCard({ signal, language }: SignalCardProps) {
     }
   };
 
+  const handleRecast = async () => {
+    if (recasted || !user) return;
+    const uuid = await ensureSigner();
+    if (!uuid) return;
+    setRecasted(true);
+    setRecastCount((c) => c + 1);
+    try {
+      await fetch('/api/react', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fid: user.fid,
+          castHash: signal.hash,
+          type: 'recast',
+          signerUuid: uuid,
+        }),
+      });
+    } catch {
+      setRecasted(false);
+      setRecastCount((c) => c - 1);
+    }
+  };
+
   const handleReply = async (text: string) => {
     if (!user) return;
+    const uuid = await ensureSigner();
+    if (!uuid) throw new Error('Signer not ready');
     const res = await fetch('/api/react', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -54,6 +95,7 @@ export function SignalCard({ signal, language }: SignalCardProps) {
         castHash: signal.hash,
         type: 'reply',
         text,
+        signerUuid: uuid,
       }),
     });
     if (!res.ok) throw new Error('Reply failed');
@@ -163,7 +205,15 @@ export function SignalCard({ signal, language }: SignalCardProps) {
               <span>{signal.replies}</span>
             </button>
 
-            <span className="text-xs text-white/25">&#x27F2; {signal.recasts}</span>
+            <button
+              onClick={handleRecast}
+              className={`flex items-center gap-1 text-xs transition-colors ${
+                recasted ? 'text-green-400' : 'text-white/25 hover:text-green-400/60'
+              }`}
+            >
+              <Repeat2 size={13} />
+              <span>{recastCount}</span>
+            </button>
           </div>
 
           <a
