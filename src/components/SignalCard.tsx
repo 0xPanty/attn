@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ExternalLink, Heart, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { ExternalLink, Heart, MessageCircle, ChevronDown, ChevronUp, Languages } from 'lucide-react';
 import { ReplyModal } from '@/components/ReplyModal';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Signal, Language } from '@/types';
@@ -15,6 +15,8 @@ export function SignalCard({ signal, language }: SignalCardProps) {
   const [likeCount, setLikeCount] = useState(signal.likes);
   const [showReply, setShowReply] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
+  const [translatedText, setTranslatedText] = useState<string | null>(null);
+  const [translating, setTranslating] = useState(false);
 
   const summary = language !== 'en' && signal.translatedSummary
     ? signal.translatedSummary
@@ -85,6 +87,33 @@ export function SignalCard({ signal, language }: SignalCardProps) {
         {showOriginal && (
           <div className="mb-3 pl-3 border-l border-white/10">
             <p className="text-sm text-white/60 leading-relaxed whitespace-pre-wrap">{signal.text}</p>
+            {language !== 'en' && !translatedText && (
+              <button
+                onClick={async () => {
+                  setTranslating(true);
+                  try {
+                    const r = await fetch('/api/translate', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ text: signal.text, lang: language }),
+                    });
+                    if (r.ok) {
+                      const data = await r.json();
+                      setTranslatedText(data.translation);
+                    }
+                  } catch { /* ignore */ }
+                  setTranslating(false);
+                }}
+                disabled={translating}
+                className="flex items-center gap-1 text-xs text-white/30 hover:text-white/50 transition-colors mt-2"
+              >
+                <Languages size={12} />
+                <span>{translating ? 'Translating...' : 'Translate'}</span>
+              </button>
+            )}
+            {translatedText && (
+              <p className="text-sm text-white/70 leading-relaxed mt-2 whitespace-pre-wrap">{translatedText}</p>
+            )}
           </div>
         )}
 
