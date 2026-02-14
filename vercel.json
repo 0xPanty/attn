@@ -1,6 +1,13 @@
 {
+  "crons": [
+    {
+      "path": "/api/refresh",
+      "schedule": "*/30 * * * *"
+    }
+  ],
   "functions": {
     "api/signals.js": { "maxDuration": 60 },
+    "api/refresh.js": { "maxDuration": 60 },
     "api/react.js": { "maxDuration": 15 },
     "api/translate.js": { "maxDuration": 15 },
     "api/search-user.js": { "maxDuration": 15 },

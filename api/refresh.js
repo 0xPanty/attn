@@ -4,6 +4,7 @@ const KV_REST_API_URL = process.env.KV_REST_API_URL;
 const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN;
 
 const CHANNELS = ['dev', 'ai', 'miniapps', 'build'];
+const LANGUAGES = ['en', 'zh', 'ja', 'ko', 'es', 'fr'];
 
 const LANGUAGE_MAP = {
   en: 'English',
@@ -14,21 +15,14 @@ const LANGUAGE_MAP = {
   fr: 'French',
 };
 
-// --- Try reading from KV cache first ---
-async function kvGet(key) {
-  try {
-    const res = await fetch(`${KV_REST_API_URL}/get/${key}`, {
-      headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}` },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.result || null;
-  } catch {
-    return null;
-  }
+async function kvSet(key, value, ttlSeconds) {
+  await fetch(`${KV_REST_API_URL}/set/${key}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ value, ex: ttlSeconds }),
+  });
 }
 
-// --- Fallback: live fetch if no cache ---
 async function fetchChannelCasts(channel) {
   const res = await fetch(
     `https://api.neynar.com/v2/farcaster/feed/channels?channel_ids=${channel}&with_recasts=false&limit=50`,
@@ -37,32 +31,6 @@ async function fetchChannelCasts(channel) {
   if (!res.ok) return [];
   const data = await res.json();
   return (data.casts || []).map((cast) => ({ ...cast, _channel: channel }));
-}
-
-async function fetchUserCasts(fids) {
-  if (!fids || fids.length === 0) return [];
-  const allCasts = [];
-  const batchSize = 5;
-  for (let i = 0; i < fids.length; i += batchSize) {
-    const batch = fids.slice(i, i + batchSize);
-    const results = await Promise.all(
-      batch.map(async (fid) => {
-        try {
-          const response = await fetch(
-            `https://api.neynar.com/v2/farcaster/feed/user/${fid}/casts?limit=10&include_replies=false`,
-            { headers: { accept: 'application/json', api_key: NEYNAR_API_KEY } }
-          );
-          if (!response.ok) return [];
-          const data = await response.json();
-          return (data.casts || []).map((c) => ({ ...c, _channel: 'following' }));
-        } catch {
-          return [];
-        }
-      })
-    );
-    allCasts.push(...results.flat());
-  }
-  return allCasts;
 }
 
 function basicFilter(casts) {
@@ -180,50 +148,40 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    const lang = req.query.lang || 'en';
-    const fids = req.query.fids ? req.query.fids.split(',').map(Number).filter(Boolean) : [];
-
-    // If no watchlist, try cache first
-    if (fids.length === 0) {
-      const cached = await kvGet(`signals:${lang}`);
-      if (cached) {
-        try {
-          const parsed = typeof cached === 'string' ? JSON.parse(cached) : cached;
-          parsed.meta = parsed.meta || {};
-          parsed.meta.cached = true;
-          return res.status(200).json(parsed);
-        } catch {}
-      }
-    }
-
-    // No cache or has watchlist fids — fetch live
-    const [channelCasts, userCasts] = await Promise.all([
-      Promise.all(CHANNELS.map(fetchChannelCasts)).then((r) => r.flat()),
-      fetchUserCasts(fids),
-    ]);
-
-    const allCasts = [...channelCasts, ...userCasts];
+    // Fetch all channel casts
+    const allCasts = (await Promise.all(CHANNELS.map(fetchChannelCasts))).flat();
     const filtered = basicFilter(allCasts);
     const unique = deduplicate(filtered);
-    const analyses = await analyzeWithGemini(unique, lang);
-    const signals = buildSignals(unique, analyses);
+
+    // Generate signals for each language and cache
+    for (const lang of LANGUAGES) {
+      const analyses = await analyzeWithGemini(unique, lang);
+      const signals = buildSignals(unique, analyses);
+
+      const cacheData = JSON.stringify({
+        signals,
+        meta: {
+          totalFetched: allCasts.length,
+          afterFilter: filtered.length,
+          afterDedup: unique.length,
+          finalSignals: signals.length,
+          channels: CHANNELS,
+          language: lang,
+          timestamp: new Date().toISOString(),
+        },
+      });
+
+      // Cache for 35 minutes (slightly longer than cron interval)
+      await kvSet(`signals:${lang}`, cacheData, 2100);
+    }
 
     return res.status(200).json({
-      signals,
-      meta: {
-        totalFetched: allCasts.length,
-        afterFilter: filtered.length,
-        afterDedup: unique.length,
-        finalSignals: signals.length,
-        channels: CHANNELS,
-        watchlistFids: fids,
-        language: lang,
-        cached: false,
-        timestamp: new Date().toISOString(),
-      },
+      success: true,
+      languages: LANGUAGES,
+      timestamp: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('Signal API error:', err);
-    return res.status(500).json({ error: 'Internal server error' });
+    console.error('Refresh error:', err);
+    return res.status(500).json({ error: 'Refresh failed' });
   }
 }
