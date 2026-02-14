@@ -154,6 +154,17 @@ ${castTexts}`;
   }
 }
 
+function extractImages(cast) {
+  const images = [];
+  for (const embed of (cast.embeds || [])) {
+    const url = embed.url || embed.uri || '';
+    if (/\.(jpg|jpeg|png|gif|webp)/i.test(url) || url.includes('imagedelivery.net')) {
+      images.push(url);
+    }
+  }
+  return images;
+}
+
 function buildSignals(casts, analyses) {
   return analyses
     .filter((a) => a.score >= 7)
@@ -181,6 +192,7 @@ function buildSignals(casts, analyses) {
         recasts: cast.reactions?.recasts_count || 0,
         timestamp: cast.timestamp || new Date().toISOString(),
         originalUrl: `https://warpcast.com/${cast.author?.username || 'unknown'}/${cast.hash?.slice(0, 10) || ''}`,
+        images: extractImages(cast),
       };
     })
     .filter(Boolean);

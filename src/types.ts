@@ -17,6 +17,7 @@ export interface Signal {
   recasts: number;
   timestamp: string;
   originalUrl: string;
+  images: string[];
 }
 
 export type Language = 'en' | 'zh' | 'ja' | 'ko' | 'es' | 'fr';

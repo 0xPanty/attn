@@ -70,6 +70,20 @@ export function SignalCard({ signal, language }: SignalCardProps) {
 
         <p className="text-sm text-white/80 leading-relaxed mb-3">{summary}</p>
 
+        {signal.images.length > 0 && (
+          <div className={`mb-3 ${signal.images.length === 1 ? '' : 'grid grid-cols-2 gap-1.5'}`}>
+            {signal.images.slice(0, 4).map((url, i) => (
+              <img
+                key={i}
+                src={url}
+                alt=""
+                className="w-full rounded-lg object-cover max-h-48"
+                loading="lazy"
+              />
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
