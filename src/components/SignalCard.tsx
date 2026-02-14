@@ -29,12 +29,16 @@ export function SignalCard({ signal, language }: SignalCardProps) {
   const ensureSigner = async (): Promise<string | null> => {
     if (signerStatus === 'approved' && signerUuid) return signerUuid;
     if (signerStatus === 'pending') {
-      alert('Signer pending approval. Please approve in Warpcast first.');
+      alert('Please approve the signer in Warpcast first.');
       return null;
     }
     const uuid = await requestSigner();
-    if (!uuid) alert('Failed to create signer. Please try again.');
-    return null; // will be available after approval
+    if (!uuid) {
+      alert('Failed to create signer. Please try again.');
+      return null;
+    }
+    alert('Signer created! Please approve it in Warpcast, then try again.');
+    return null;
   };
 
   const handleLike = async () => {

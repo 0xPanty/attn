@@ -16,16 +16,7 @@ const SIGNED_KEY_REQUEST_TYPE = [
   { name: 'deadline', type: 'uint256' },
 ];
 
-async function getAppFid() {
-  const account = mnemonicToAccount(FARCASTER_DEVELOPER_MNEMONIC);
-  const res = await fetch(
-    `https://api.neynar.com/v2/farcaster/user/by_verification?address=${account.address}`,
-    { headers: { 'x-api-key': NEYNAR_API_KEY } }
-  );
-  if (!res.ok) throw new Error('Failed to lookup app FID');
-  const data = await res.json();
-  return data.user?.fid || null;
-}
+const APP_FID = parseInt(process.env.APP_FID || '275646', 10);
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -50,8 +41,6 @@ export default async function handler(req, res) {
 
     // Step 2: Sign key request with developer account
     const account = mnemonicToAccount(FARCASTER_DEVELOPER_MNEMONIC);
-    const appFid = await getAppFid();
-    if (!appFid) return res.status(500).json({ error: 'Could not resolve app FID' });
 
     const deadline = Math.floor(Date.now() / 1000) + 86400; // 24h
 
@@ -60,7 +49,7 @@ export default async function handler(req, res) {
       types: { SignedKeyRequest: SIGNED_KEY_REQUEST_TYPE },
       primaryType: 'SignedKeyRequest',
       message: {
-        requestFid: BigInt(appFid),
+        requestFid: BigInt(APP_FID),
         key: signer.public_key,
         deadline: BigInt(deadline),
       },
@@ -77,7 +66,7 @@ export default async function handler(req, res) {
         },
         body: JSON.stringify({
           signer_uuid: signer.signer_uuid,
-          app_fid: appFid,
+          app_fid: APP_FID,
           deadline,
           signature,
         }),
