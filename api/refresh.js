@@ -15,6 +15,45 @@ const LANGUAGE_MAP = {
   fr: 'French',
 };
 
+async function kvGet(key) {
+  try {
+    const res = await fetch(`${KV_REST_API_URL}/get/${encodeURIComponent(key)}`, {
+      headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    let result = data.result;
+    if (!result) return null;
+    if (typeof result === 'string') {
+      try { result = JSON.parse(result); } catch { return null; }
+    }
+    if (result.value && !result.authors) {
+      result = typeof result.value === 'string' ? JSON.parse(result.value) : result.value;
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+async function updateAuthorStats(signals) {
+  if (!signals || signals.length === 0) return;
+  const existing = (await kvGet('stats:authors')) || {};
+  for (const s of signals) {
+    const fid = String(s.author?.fid);
+    if (!fid || fid === '0') continue;
+    if (!existing[fid]) {
+      existing[fid] = { username: s.author.username, displayName: s.author.displayName, count: 0, lastSeen: null };
+    }
+    existing[fid].count += 1;
+    existing[fid].lastSeen = new Date().toISOString();
+    existing[fid].username = s.author.username;
+    existing[fid].displayName = s.author.displayName;
+  }
+  // Keep stats for 30 days
+  await kvSet('stats:authors', JSON.stringify(existing), 30 * 24 * 60 * 60);
+}
+
 async function kvSet(key, value, ttlSeconds) {
   const res = await fetch(`${KV_REST_API_URL}/set/${encodeURIComponent(key)}?EX=${ttlSeconds}`, {
     method: 'PUT',
@@ -26,13 +65,13 @@ async function kvSet(key, value, ttlSeconds) {
   }
 }
 
-async function fetchTrendingCasts() {
+async function fetchGlobalTrending() {
   const res = await fetch(
-    'https://api.neynar.com/v2/farcaster/feed/trending/?limit=10&time_window=6h&provider=neynar',
+    'https://api.neynar.com/v2/farcaster/feed/?feed_type=filter&filter_type=global_trending&limit=100',
     { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
   );
   if (!res.ok) {
-    console.error('Trending fetch failed:', res.status);
+    console.error('Global trending fetch failed:', res.status);
     return [];
   }
   const data = await res.json();
@@ -52,11 +91,14 @@ async function fetchChannelCasts(channel) {
 function basicFilter(casts) {
   const gmPatterns = /^(gm|gn|gm!|gn!|good morning|good night|hey|hello|hi|👋|🌞|☀️)/i;
   const emojiOnly = /^[\p{Emoji}\s]+$/u;
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
   return casts.filter((cast) => {
     const text = (cast.text || '').trim();
     if (text.length < 80) return false;
     if (gmPatterns.test(text)) return false;
     if (emojiOnly.test(text)) return false;
+    const castTime = new Date(cast.timestamp || 0).getTime();
+    if (castTime < oneDayAgo) return false;
     return true;
   });
 }
@@ -178,7 +220,7 @@ export default async function handler(req, res) {
   try {
     // Fetch trending + channel casts
     const [trendingCasts, ...channelResults] = await Promise.all([
-      fetchTrendingCasts(),
+      fetchGlobalTrending(),
       ...CHANNELS.map(fetchChannelCasts),
     ]);
     const allCasts = [...trendingCasts, ...channelResults.flat()];
@@ -186,9 +228,11 @@ export default async function handler(req, res) {
     const unique = deduplicate(filtered);
 
     // Generate signals for each language and cache
+    let firstSignals = [];
     for (const lang of LANGUAGES) {
       const analyses = await analyzeWithGemini(unique, lang);
       const signals = buildSignals(unique, analyses);
+      if (lang === LANGUAGES[0]) firstSignals = signals;
 
       const cacheData = JSON.stringify({
         signals,
@@ -203,9 +247,11 @@ export default async function handler(req, res) {
         },
       });
 
-      // Cache for 35 minutes (slightly longer than cron interval)
       await kvSet(`signals:${lang}`, cacheData, 2100);
     }
+
+    // Track author stats
+    await updateAuthorStats(firstSignals);
 
     return res.status(200).json({
       success: true,

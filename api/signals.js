@@ -38,9 +38,9 @@ async function kvGet(key) {
   }
 }
 
-async function fetchTrendingCasts() {
+async function fetchGlobalTrending() {
   const res = await fetch(
-    'https://api.neynar.com/v2/farcaster/feed/trending/?limit=10&time_window=6h&provider=neynar',
+    'https://api.neynar.com/v2/farcaster/feed/?feed_type=filter&filter_type=global_trending&limit=100',
     { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
   );
   if (!res.ok) return [];
@@ -88,11 +88,14 @@ async function fetchUserCasts(fids) {
 function basicFilter(casts) {
   const gmPatterns = /^(gm|gn|gm!|gn!|good morning|good night|hey|hello|hi|👋|🌞|☀️)/i;
   const emojiOnly = /^[\p{Emoji}\s]+$/u;
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
   return casts.filter((cast) => {
     const text = (cast.text || '').trim();
     if (text.length < 80) return false;
     if (gmPatterns.test(text)) return false;
     if (emojiOnly.test(text)) return false;
+    const castTime = new Date(cast.timestamp || 0).getTime();
+    if (castTime < oneDayAgo) return false;
     return true;
   });
 }
@@ -227,7 +230,7 @@ export default async function handler(req, res) {
 
     // No cache or has watchlist fids — fetch live
     const [trendingCasts, channelCasts, userCasts] = await Promise.all([
-      fetchTrendingCasts(),
+      fetchGlobalTrending(),
       Promise.all(CHANNELS.map(fetchChannelCasts)).then((r) => r.flat()),
       fetchUserCasts(fids),
     ]);
