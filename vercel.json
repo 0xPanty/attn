@@ -1,7 +1,6 @@
 {
   "functions": {
-    "api/signals.js": { "maxDuration": 60 },
-    "api/refresh.js": { "maxDuration": 60 }
+    "api/signals.js": { "maxDuration": 60 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
