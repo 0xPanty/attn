@@ -18,6 +18,15 @@ export interface Signal {
   timestamp: string;
   originalUrl: string;
   images: string[];
+  quotedCast?: {
+    hash: string;
+    author: {
+      username: string;
+      displayName: string;
+      pfpUrl: string;
+    };
+    text: string;
+  } | null;
 }
 
 export type Language = 'en' | 'zh' | 'ja' | 'ko' | 'es' | 'fr';

@@ -178,6 +178,24 @@ function extractImages(cast) {
   return images;
 }
 
+function extractQuotedCast(cast) {
+  for (const embed of (cast.embeds || [])) {
+    if (embed.cast) {
+      const qc = embed.cast;
+      return {
+        hash: qc.hash || '',
+        author: {
+          username: qc.author?.username || 'unknown',
+          displayName: qc.author?.display_name || qc.author?.displayName || 'Unknown',
+          pfpUrl: qc.author?.pfp_url || qc.author?.pfpUrl || '',
+        },
+        text: qc.text || '',
+      };
+    }
+  }
+  return null;
+}
+
 function buildSignals(casts, analyses) {
   return analyses
     .filter((a) => a.score >= 7)
@@ -206,6 +224,7 @@ function buildSignals(casts, analyses) {
         timestamp: cast.timestamp || new Date().toISOString(),
         originalUrl: `https://warpcast.com/${cast.author?.username || 'unknown'}/${cast.hash?.slice(0, 10) || ''}`,
         images: extractImages(cast),
+        quotedCast: extractQuotedCast(cast),
       };
     })
     .filter(Boolean);

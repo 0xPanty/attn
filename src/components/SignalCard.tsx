@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ExternalLink, Heart, MessageCircle } from 'lucide-react';
+import { ExternalLink, Heart, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { ReplyModal } from '@/components/ReplyModal';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Signal, Language } from '@/types';
@@ -14,6 +14,7 @@ export function SignalCard({ signal, language }: SignalCardProps) {
   const [liked, setLiked] = useState(false);
   const [likeCount, setLikeCount] = useState(signal.likes);
   const [showReply, setShowReply] = useState(false);
+  const [showOriginal, setShowOriginal] = useState(false);
 
   const summary = language !== 'en' && signal.translatedSummary
     ? signal.translatedSummary
@@ -68,7 +69,36 @@ export function SignalCard({ signal, language }: SignalCardProps) {
           <span className="text-xs text-white/30">{timeAgo}</span>
         </div>
 
+        <div className="mb-2">
+          <span className="text-[10px] uppercase tracking-wider text-white/20">AI Summary</span>
+        </div>
         <p className="text-sm text-white/80 leading-relaxed mb-3">{summary}</p>
+
+        <button
+          onClick={() => setShowOriginal(!showOriginal)}
+          className="flex items-center gap-1 text-xs text-white/30 hover:text-white/50 transition-colors mb-3"
+        >
+          {showOriginal ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+          <span>{showOriginal ? 'Hide original' : 'Show original'}</span>
+        </button>
+
+        {showOriginal && (
+          <div className="mb-3 pl-3 border-l border-white/10">
+            <p className="text-sm text-white/60 leading-relaxed whitespace-pre-wrap">{signal.text}</p>
+          </div>
+        )}
+
+        {signal.quotedCast && (
+          <div className="mb-3 rounded-lg border border-white/10 p-3 bg-white/[0.02]">
+            <div className="flex items-center gap-2 mb-1">
+              {signal.quotedCast.author.pfpUrl && (
+                <img src={signal.quotedCast.author.pfpUrl} alt="" className="w-4 h-4 rounded-full" />
+              )}
+              <span className="text-xs text-white/40">@{signal.quotedCast.author.username}</span>
+            </div>
+            <p className="text-xs text-white/50 leading-relaxed line-clamp-4">{signal.quotedCast.text}</p>
+          </div>
+        )}
 
         {signal.images.length > 0 && (
           <div className={`mb-3 ${signal.images.length === 1 ? '' : 'grid grid-cols-2 gap-1.5'}`}>
@@ -104,7 +134,7 @@ export function SignalCard({ signal, language }: SignalCardProps) {
               <span>{signal.replies}</span>
             </button>
 
-            <span className="text-xs text-white/25">⟲ {signal.recasts}</span>
+            <span className="text-xs text-white/25">&#x27F2; {signal.recasts}</span>
           </div>
 
           <a
