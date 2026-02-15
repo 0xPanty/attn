@@ -231,15 +231,20 @@ export function SignalCard({ signal, language }: SignalCardProps) {
             </button>
           </div>
 
-          <a
-            href={signal.originalUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+          <button
+            onClick={async () => {
+              try {
+                const { sdk } = await import('@farcaster/miniapp-sdk');
+                await sdk.actions.openUrl({ url: signal.originalUrl });
+              } catch {
+                window.open(signal.originalUrl, '_blank');
+              }
+            }}
             className="flex items-center gap-1 text-sm text-white/30 hover:text-white/60 transition-colors"
           >
             <span>original</span>
             <ExternalLink size={12} />
-          </a>
+          </button>
         </div>
       </article>
 
