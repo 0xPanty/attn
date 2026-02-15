@@ -104,9 +104,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSignerUuid(data.signerUuid);
       setSignerStatus('pending');
       localStorage.setItem(SIGNER_STORAGE_KEY, data.signerUuid);
-      // Open approval URL in Warpcast
+      // Open approval URL in Farcaster
       if (data.approvalUrl) {
-        window.open(data.approvalUrl, '_blank');
+        try {
+          await sdk.actions.openUrl({ url: data.approvalUrl });
+        } catch {
+          window.open(data.approvalUrl, '_blank');
+        }
       }
       return data.signerUuid;
     } catch {
