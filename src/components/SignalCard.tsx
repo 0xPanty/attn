@@ -1,7 +1,5 @@
 import { useState } from 'react';
 import { ExternalLink, Heart, MessageCircle, Repeat2, ChevronDown, ChevronUp, Languages } from 'lucide-react';
-import { ReplyModal } from '@/components/ReplyModal';
-import { useAuth } from '@/contexts/AuthContext';
 import type { Signal, Language } from '@/types';
 
 interface SignalCardProps {
@@ -10,12 +8,6 @@ interface SignalCardProps {
 }
 
 export function SignalCard({ signal, language }: SignalCardProps) {
-  const { user, signerUuid, signerStatus, requestSigner } = useAuth();
-  const [liked, setLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(signal.likes);
-  const [recasted, setRecasted] = useState(false);
-  const [recastCount, setRecastCount] = useState(signal.recasts);
-  const [showReply, setShowReply] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
   const [translatedText, setTranslatedText] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
@@ -25,97 +17,6 @@ export function SignalCard({ signal, language }: SignalCardProps) {
     : signal.summary;
 
   const timeAgo = getTimeAgo(signal.timestamp);
-
-  const ensureSigner = async (): Promise<string | null> => {
-    if (signerStatus === 'approved' && signerUuid) return signerUuid;
-    if (signerStatus === 'pending' && signerUuid) {
-      try {
-        const r = await fetch(`/api/signer-status?uuid=${signerUuid}`);
-        const data = await r.json();
-        if (data.status === 'approved') return signerUuid;
-      } catch { /* ignore */ }
-      alert('Signer is pending approval. Please check Farcaster notifications.');
-      return null;
-    }
-    // No signer yet — create one
-    await requestSigner();
-    return null;
-  };
-
-  const handleLike = async () => {
-    if (liked) return;
-    if (!user) {
-      alert('Please open Attn. inside Farcaster to use interactions.');
-      return;
-    }
-    const uuid = await ensureSigner();
-    if (!uuid) return;
-    setLiked(true);
-    setLikeCount((c) => c + 1);
-    try {
-      await fetch('/api/react', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fid: user.fid,
-          castHash: signal.hash,
-          type: 'like',
-          signerUuid: uuid,
-        }),
-      });
-    } catch {
-      setLiked(false);
-      setLikeCount((c) => c - 1);
-    }
-  };
-
-  const handleRecast = async () => {
-    if (recasted) return;
-    if (!user) {
-      alert('Please open Attn. inside Farcaster to use interactions.');
-      return;
-    }
-    const uuid = await ensureSigner();
-    if (!uuid) return;
-    setRecasted(true);
-    setRecastCount((c) => c + 1);
-    try {
-      await fetch('/api/react', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fid: user.fid,
-          castHash: signal.hash,
-          type: 'recast',
-          signerUuid: uuid,
-        }),
-      });
-    } catch {
-      setRecasted(false);
-      setRecastCount((c) => c - 1);
-    }
-  };
-
-  const handleReply = async (text: string) => {
-    if (!user) {
-      alert('Please open Attn. inside Farcaster to use interactions.');
-      return;
-    }
-    const uuid = await ensureSigner();
-    if (!uuid) throw new Error('Signer not ready');
-    const res = await fetch('/api/react', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fid: user.fid,
-        castHash: signal.hash,
-        type: 'reply',
-        text,
-        signerUuid: uuid,
-      }),
-    });
-    if (!res.ok) throw new Error('Reply failed');
-  };
 
   return (
     <>
@@ -203,33 +104,18 @@ export function SignalCard({ signal, language }: SignalCardProps) {
 
         <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-5">
-            <button
-              onClick={handleLike}
-              className={`flex items-center gap-1.5 text-sm transition-colors ${
-                liked ? 'text-red-400' : 'text-white/25 hover:text-red-400/60'
-              }`}
-            >
-              <Heart size={15} fill={liked ? 'currentColor' : 'none'} />
-              <span>{likeCount}</span>
-            </button>
-
-            <button
-              onClick={() => setShowReply(true)}
-              className="flex items-center gap-1.5 text-sm text-white/25 hover:text-white/60 transition-colors"
-            >
-              <MessageCircle size={15} />
+            <span className="flex items-center gap-1.5 text-sm text-white/20">
+              <Heart size={14} />
+              <span>{signal.likes}</span>
+            </span>
+            <span className="flex items-center gap-1.5 text-sm text-white/20">
+              <MessageCircle size={14} />
               <span>{signal.replies}</span>
-            </button>
-
-            <button
-              onClick={handleRecast}
-              className={`flex items-center gap-1.5 text-sm transition-colors ${
-                recasted ? 'text-green-400' : 'text-white/25 hover:text-green-400/60'
-              }`}
-            >
-              <Repeat2 size={15} />
-              <span>{recastCount}</span>
-            </button>
+            </span>
+            <span className="flex items-center gap-1.5 text-sm text-white/20">
+              <Repeat2 size={14} />
+              <span>{signal.recasts}</span>
+            </span>
           </div>
 
           <button
@@ -248,15 +134,6 @@ export function SignalCard({ signal, language }: SignalCardProps) {
           </button>
         </div>
       </article>
-
-      {showReply && (
-        <ReplyModal
-          authorUsername={signal.author.username}
-          castHash={signal.hash}
-          onClose={() => setShowReply(false)}
-          onSend={handleReply}
-        />
-      )}
     </>
   );
 }
