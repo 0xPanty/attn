@@ -99,21 +99,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (signerUuid && signerStatus === 'approved') return signerUuid;
     try {
       const r = await fetch('/api/signer', { method: 'POST' });
-      if (!r.ok) return null;
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        console.error('Signer creation failed:', err);
+        return null;
+      }
       const data = await r.json();
+      console.log('Signer response:', data);
       setSignerUuid(data.signerUuid);
       setSignerStatus('pending');
       localStorage.setItem(SIGNER_STORAGE_KEY, data.signerUuid);
-      // Open approval URL in Farcaster
       if (data.approvalUrl) {
+        // Try SDK first, then direct navigation
         try {
           await sdk.actions.openUrl({ url: data.approvalUrl });
         } catch {
-          window.open(data.approvalUrl, '_blank');
+          window.location.href = data.approvalUrl;
         }
+      } else {
+        console.error('No approvalUrl in response');
       }
       return data.signerUuid;
-    } catch {
+    } catch (err) {
+      console.error('requestSigner error:', err);
       return null;
     }
   }, [signerUuid, signerStatus]);

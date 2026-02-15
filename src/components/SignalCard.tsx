@@ -28,16 +28,25 @@ export function SignalCard({ signal, language }: SignalCardProps) {
 
   const ensureSigner = async (): Promise<string | null> => {
     if (signerStatus === 'approved' && signerUuid) return signerUuid;
-    if (signerStatus === 'pending') {
-      alert('Please approve the signer in Farcaster first.');
-      return null;
+    if (signerStatus === 'pending' && signerUuid) {
+      try {
+        const r = await fetch(`/api/signer-status?uuid=${signerUuid}`);
+        const data = await r.json();
+        if (data.status === 'approved') return signerUuid;
+        // Re-create signer if still pending (old one may have expired)
+        const uuid = await requestSigner();
+        if (!uuid) alert('Please approve the signer in Farcaster, then try again.');
+        return null;
+      } catch {
+        alert('Please approve the signer in Farcaster first.');
+        return null;
+      }
     }
     const uuid = await requestSigner();
     if (!uuid) {
       alert('Failed to create signer. Please try again.');
       return null;
     }
-    alert('Signer created! Please approve it in Farcaster, then try again.');
     return null;
   };
 
