@@ -12,7 +12,6 @@
     "api/translate.js": { "maxDuration": 15 },
     "api/search-user.js": { "maxDuration": 15 },
     "api/user-casts.js": { "maxDuration": 30 },
-    "api/generate-manifest.js": { "maxDuration": 15 },
     "api/signer.js": { "maxDuration": 30 },
     "api/signer-status.js": { "maxDuration": 15 }
   },

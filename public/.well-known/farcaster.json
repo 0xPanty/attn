@@ -1,0 +1,19 @@
+{
+  "accountAssociation": {
+    "header": "eyJmaWQiOjI3NTY0NiwidHlwZSI6ImN1c3RvZHkiLCJrZXkiOiIweDY0OTZBRkFjRDc0ODEwYTliYmMzRTIyYWZiNDVEZjFlOTI3YkFGRjgifQ",
+    "payload": "eyJkb21haW4iOiJhdHRuLmluayJ9",
+    "signature": "X5S5n9QJhrzi_B69Qx-f-R15yWjFIdY4ZLRdCoAenvMoS0bRma0OWP_ZtniPmSAQhXdj7GjchTcUz3SjtWlZeBw"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Attn.",
+    "iconUrl": "https://attn.ink/icon.png",
+    "homeUrl": "https://attn.ink",
+    "splashImageUrl": "https://attn.ink/icon.png",
+    "splashBackgroundColor": "#000000",
+    "subtitle": "only signal, no noise",
+    "description": "AI-powered signal filter for Farcaster. Cuts through noise to surface high-density insights.",
+    "primaryCategory": "developer-tools",
+    "tags": ["ai", "signal", "filter", "farcaster"]
+  }
+}
