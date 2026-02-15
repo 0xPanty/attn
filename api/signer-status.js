@@ -8,7 +8,7 @@ export default async function handler(req, res) {
   if (!uuid) return res.status(400).json({ error: 'Missing signer uuid' });
 
   try {
-    const r = await fetch(`https://api.neynar.com/v2/farcaster/signer/${uuid}`, {
+    const r = await fetch(`https://api.neynar.com/v2/farcaster/signer/?signer_uuid=${uuid}`, {
       headers: { 'x-api-key': NEYNAR_API_KEY },
     });
     if (!r.ok) return res.status(r.status).json({ error: 'Lookup failed' });

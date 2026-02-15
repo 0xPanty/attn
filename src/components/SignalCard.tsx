@@ -33,20 +33,12 @@ export function SignalCard({ signal, language }: SignalCardProps) {
         const r = await fetch(`/api/signer-status?uuid=${signerUuid}`);
         const data = await r.json();
         if (data.status === 'approved') return signerUuid;
-        // Re-create signer if still pending (old one may have expired)
-        const uuid = await requestSigner();
-        if (!uuid) alert('Please approve the signer in Farcaster, then try again.');
-        return null;
-      } catch {
-        alert('Please approve the signer in Farcaster first.');
-        return null;
-      }
-    }
-    const uuid = await requestSigner();
-    if (!uuid) {
-      alert('Failed to create signer. Please try again.');
+      } catch { /* ignore */ }
+      alert('Signer is pending approval. Please check Farcaster notifications.');
       return null;
     }
+    // No signer yet — create one
+    await requestSigner();
     return null;
   };
 
