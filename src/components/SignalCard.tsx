@@ -42,7 +42,11 @@ export function SignalCard({ signal, language }: SignalCardProps) {
   };
 
   const handleLike = async () => {
-    if (liked || !user) return;
+    if (liked) return;
+    if (!user) {
+      alert('Please open Attn. inside Farcaster to use interactions.');
+      return;
+    }
     const uuid = await ensureSigner();
     if (!uuid) return;
     setLiked(true);
@@ -65,7 +69,11 @@ export function SignalCard({ signal, language }: SignalCardProps) {
   };
 
   const handleRecast = async () => {
-    if (recasted || !user) return;
+    if (recasted) return;
+    if (!user) {
+      alert('Please open Attn. inside Farcaster to use interactions.');
+      return;
+    }
     const uuid = await ensureSigner();
     if (!uuid) return;
     setRecasted(true);
@@ -88,7 +96,10 @@ export function SignalCard({ signal, language }: SignalCardProps) {
   };
 
   const handleReply = async (text: string) => {
-    if (!user) return;
+    if (!user) {
+      alert('Please open Attn. inside Farcaster to use interactions.');
+      return;
+    }
     const uuid = await ensureSigner();
     if (!uuid) throw new Error('Signer not ready');
     const res = await fetch('/api/react', {
