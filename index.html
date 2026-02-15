@@ -10,8 +10,8 @@
     <meta name="fc:miniapp" content='{"version":"1","imageUrl":"https://attn.ink/embed.png","button":{"title":"Open Attn.","action":{"type":"launch_frame","name":"Attn.","url":"https://attn.ink","splashImageUrl":"https://attn.ink/icon.png","splashBackgroundColor":"#000000"}}}' />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   </head>
-  <body>
-    <div id="root"></div>
+  <body style="position:fixed;width:100%;height:100%;overflow:hidden">
+    <div id="root" style="width:100%;height:100%;overflow-y:auto;overflow-x:hidden"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
