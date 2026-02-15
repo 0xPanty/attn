@@ -8,7 +8,9 @@ import { useWatchlist } from '@/hooks/useWatchlist';
 import type { Language } from '@/types';
 
 function AppContent() {
-  const [language, setLanguage] = useState<Language>('zh');
+  const [language, setLanguage] = useState<Language>(() => {
+    return (localStorage.getItem('attn_language') as Language) || 'en';
+  });
   const [showWatchlist, setShowWatchlist] = useState(false);
   const { watchlist, addUser, removeUser } = useWatchlist();
 
@@ -16,7 +18,7 @@ function AppContent() {
     <div className="relative w-full h-full flex flex-col bg-black text-white">
       <Header
         language={language}
-        onLanguageChange={setLanguage}
+        onLanguageChange={(lang: Language) => { setLanguage(lang); localStorage.setItem('attn_language', lang); }}
         watchlistCount={watchlist.length}
         onWatchlistOpen={() => setShowWatchlist(true)}
       />
