@@ -1,0 +1,52 @@
+import { mnemonicToAccount } from 'viem/accounts';
+import { Buffer } from 'buffer';
+
+const MNEMONIC = process.env.FARCASTER_DEVELOPER_MNEMONIC;
+const DOMAIN = 'attn.ink';
+const FID = 275646;
+
+if (!MNEMONIC) {
+  console.error('Set FARCASTER_DEVELOPER_MNEMONIC env var first');
+  process.exit(1);
+}
+
+const account = mnemonicToAccount(MNEMONIC);
+
+const header = {
+  fid: FID,
+  type: 'custody',
+  key: account.address,
+};
+
+const payload = { domain: DOMAIN };
+
+const headerB64 = Buffer.from(JSON.stringify(header)).toString('base64url');
+const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+
+const signatureHex = await account.signMessage({
+  message: `${headerB64}.${payloadB64}`,
+});
+
+const signatureB64 = Buffer.from(signatureHex.slice(2), 'hex').toString('base64url');
+
+const manifest = {
+  accountAssociation: {
+    header: headerB64,
+    payload: payloadB64,
+    signature: signatureB64,
+  },
+  miniapp: {
+    version: '1',
+    name: 'Attn.',
+    iconUrl: `https://${DOMAIN}/icon.png`,
+    homeUrl: `https://${DOMAIN}`,
+    splashImageUrl: `https://${DOMAIN}/icon.png`,
+    splashBackgroundColor: '#000000',
+    subtitle: 'only signal, no noise',
+    description: 'AI-powered signal filter for Farcaster. Cuts through noise to surface high-density insights.',
+    primaryCategory: 'developer-tools',
+    tags: ['ai', 'signal', 'filter', 'farcaster'],
+  },
+};
+
+console.log(JSON.stringify(manifest, null, 2));

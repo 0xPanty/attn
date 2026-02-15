@@ -11,11 +11,15 @@
     "api/react.js": { "maxDuration": 15 },
     "api/translate.js": { "maxDuration": 15 },
     "api/search-user.js": { "maxDuration": 15 },
-    "api/user-casts.js": { "maxDuration": 30 }
+    "api/user-casts.js": { "maxDuration": 30 },
+    "api/generate-manifest.js": { "maxDuration": 15 },
+    "api/signer.js": { "maxDuration": 30 },
+    "api/signer-status.js": { "maxDuration": 15 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/.well-known/(.*)", "destination": "/.well-known/$1" },
+    { "source": "/((?!api/|.well-known/).*)", "destination": "/index.html" }
   ],
   "headers": [
     {

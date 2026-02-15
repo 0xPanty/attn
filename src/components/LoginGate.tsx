@@ -20,12 +20,12 @@ export const LoginGate: React.FC<{ children: React.ReactNode }> = ({ children })
         </h1>
         <p className="text-white/30 text-sm mb-8">only signal, no noise.</p>
         <a
-          href="https://warpcast.com"
+          href="https://farcaster.xyz"
           target="_blank"
           rel="noopener noreferrer"
           className="w-full max-w-xs py-3 rounded-lg bg-white text-black font-medium text-sm text-center active:scale-95 transition-transform"
         >
-          Open in Warpcast
+          Open in Farcaster
         </a>
       </div>
     );
