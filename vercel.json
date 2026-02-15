@@ -13,7 +13,8 @@
     "api/search-user.js": { "maxDuration": 15 },
     "api/user-casts.js": { "maxDuration": 30 },
     "api/signer.js": { "maxDuration": 30 },
-    "api/signer-status.js": { "maxDuration": 15 }
+    "api/signer-status.js": { "maxDuration": 15 },
+    "api/watchlist.js": { "maxDuration": 15 }
   },
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },

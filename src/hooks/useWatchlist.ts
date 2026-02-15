@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface WatchUser {
   fid: number;
@@ -10,6 +11,7 @@ export interface WatchUser {
 const STORAGE_KEY = 'attn_watchlist';
 
 export function useWatchlist() {
+  const { user } = useAuth();
   const [watchlist, setWatchlist] = useState<WatchUser[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -18,20 +20,52 @@ export function useWatchlist() {
       return [];
     }
   });
+  const [loaded, setLoaded] = useState(false);
 
+  // Load from Redis on login
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(watchlist));
-  }, [watchlist]);
+    if (!user?.fid || loaded) return;
+    fetch(`/api/watchlist?fid=${user.fid}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.watchlist && data.watchlist.length > 0) {
+          setWatchlist(data.watchlist);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(data.watchlist));
+        }
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, [user?.fid, loaded]);
 
-  const addUser = (user: WatchUser) => {
+  // Sync to Redis + localStorage on change
+  const syncWatchlist = useCallback((next: WatchUser[]) => {
+    setWatchlist(next);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    if (user?.fid) {
+      fetch(`/api/watchlist?fid=${user.fid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ watchlist: next }),
+      }).catch(() => {});
+    }
+  }, [user?.fid]);
+
+  const addUser = (u: WatchUser) => {
     setWatchlist((prev) => {
-      if (prev.some((u) => u.fid === user.fid)) return prev;
-      return [...prev, user];
+      if (prev.some((w) => w.fid === u.fid)) return prev;
+      if (prev.length >= 10) return prev;
+      const next = [...prev, u];
+      syncWatchlist(next);
+      return next;
     });
   };
 
   const removeUser = (fid: number) => {
-    setWatchlist((prev) => prev.filter((u) => u.fid !== fid));
+    setWatchlist((prev) => {
+      const next = prev.filter((w) => w.fid !== fid);
+      syncWatchlist(next);
+      return next;
+    });
   };
 
   return { watchlist, addUser, removeUser };
