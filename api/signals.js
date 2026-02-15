@@ -184,7 +184,7 @@ ${castTexts}`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+        generationConfig: { temperature: 0, maxOutputTokens: 4096 },
       }),
     }
   );
