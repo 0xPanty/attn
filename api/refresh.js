@@ -344,6 +344,16 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
+    // 1. Load previous cached signals (English as base)
+    const prevCached = await kvGet('signals:en');
+    const prevSignals = prevCached?.signals || [];
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+
+    // 2. Remove signals older than 24h
+    const stillValid = prevSignals.filter((s) => new Date(s.timestamp).getTime() > oneDayAgo);
+    const existingHashes = new Set(stillValid.map((s) => s.hash));
+
+    // 3. Fetch new casts
     const [trendingCasts, ...channelResults] = await Promise.all([
       fetchGlobalTrending(),
       ...CHANNELS.map(fetchChannelCasts),
@@ -353,31 +363,50 @@ export default async function handler(req, res) {
     const unique = deduplicate(filtered);
     const candidates = stratifiedSample(unique);
 
-    const highEngagement = candidates.filter((c) => (c.replies?.count || 0) >= 5);
-    const replyData = {};
-    await Promise.all(
-      highEngagement.slice(0, 10).map(async (c) => {
-        replyData[c.hash] = await fetchTopReplies(c.hash);
-      })
-    );
+    // 4. Only analyze NEW casts (not already scored)
+    const newCasts = candidates.filter((c) => !existingHashes.has(c.hash));
 
-    const analyses = await analyzeWithGemini(candidates, LANGUAGES, replyData);
-    if (!Array.isArray(analyses)) {
-      return res.status(500).json({ error: 'Gemini analysis failed' });
+    let newSignalsByLang = {};
+    for (const lang of LANGUAGES) newSignalsByLang[lang] = [];
+
+    if (newCasts.length > 0) {
+      const highEngagement = newCasts.filter((c) => (c.replies?.count || 0) >= 5);
+      const replyData = {};
+      await Promise.all(
+        highEngagement.slice(0, 10).map(async (c) => {
+          replyData[c.hash] = await fetchTopReplies(c.hash);
+        })
+      );
+
+      const analyses = await analyzeWithGemini(newCasts, LANGUAGES, replyData);
+      if (Array.isArray(analyses)) {
+        for (const lang of LANGUAGES) {
+          newSignalsByLang[lang] = buildSignals(newCasts, analyses, replyData, lang);
+        }
+      }
     }
 
+    // 5. Merge: new signals + still-valid old signals, dedupe, sort by score
     let firstSignals = [];
     for (const lang of LANGUAGES) {
-      const signals = buildSignals(candidates, analyses, replyData, lang);
-      if (lang === LANGUAGES[0]) firstSignals = signals;
+      const prevLangCached = lang === 'en' ? stillValid : ((await kvGet(`signals:${lang}`))?.signals || []).filter((s) => new Date(s.timestamp).getTime() > oneDayAgo);
+      const merged = [...newSignalsByLang[lang], ...prevLangCached];
+      const seen = new Set();
+      const deduped = merged.filter((s) => {
+        if (seen.has(s.hash)) return false;
+        seen.add(s.hash);
+        return true;
+      }).sort((a, b) => b.score - a.score);
+
+      if (lang === LANGUAGES[0]) firstSignals = deduped;
 
       const cacheData = JSON.stringify({
-        signals,
+        signals: deduped,
         meta: {
           totalFetched: allCasts.length,
-          afterFilter: filtered.length,
-          afterDedup: unique.length,
-          finalSignals: signals.length,
+          newAnalyzed: newCasts.length,
+          retained: stillValid.length,
+          finalSignals: deduped.length,
           channels: CHANNELS,
           language: lang,
           timestamp: new Date().toISOString(),
