@@ -137,18 +137,26 @@ function stratifiedSample(casts) {
 
 async function fetchTopReplies(castHash, limit = 5) {
   try {
-    const res = await fetch(
-      `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=20`,
-      { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
-    );
-    if (!res.ok) return { forGemini: [], structured: [] };
-    const json = await res.json();
-    const replies = json.conversation?.cast?.direct_replies || [];
+    const neynarHeaders = { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY };
     const emojiOnly = /^[\p{Emoji}\p{Emoji_Presentation}\p{Emoji_Modifier}\p{Emoji_Component}\s]*$/u;
-    const sorted = replies
+    const lowValue = /^(gm|gn|gm!|gn!|good morning|good night|hey|hello|hi|wow|lol|lmao|nice|based|fr|facts|this|same|true|rip|lfg|wagmi|ngmi|ser|fren|💯|🔥|👀|😂|🫡|👆|💀|☠️|🤝|w|L)\s*$/i;
+
+    const [repliesRes, quotesRes] = await Promise.all([
+      fetch(`https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=20`, { headers: neynarHeaders }),
+      fetch(`https://api.neynar.com/v2/farcaster/cast/quotes?hash=${castHash}&limit=15`, { headers: neynarHeaders }),
+    ]);
+
+    const replies = repliesRes.ok ? (await repliesRes.json()).conversation?.cast?.direct_replies || [] : [];
+    const quotes = quotesRes.ok ? (await quotesRes.json()).casts || [] : [];
+
+    const all = [...replies, ...quotes];
+    const seen = new Set();
+    const sorted = all
       .filter((r) => {
+        if (seen.has(r.hash)) return false;
+        seen.add(r.hash);
         const text = (r.text || '').trim();
-        return text.length > 5 && !emojiOnly.test(text);
+        return text.length > 10 && !emojiOnly.test(text) && !lowValue.test(text);
       })
       .sort((a, b) => (b.author?.follower_count || 0) - (a.author?.follower_count || 0))
       .slice(0, limit);
