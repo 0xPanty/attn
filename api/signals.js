@@ -4,6 +4,13 @@ const KV_REST_API_URL = process.env.KV_REST_API_URL;
 const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN;
 
 const CHANNELS = ['dev', 'ai', 'miniapps', 'build'];
+const HEAT_ORDER = { red: 0, yellow: 1, green: 2 };
+function signalSort(a, b) {
+  const ha = HEAT_ORDER[a.heat] ?? 2;
+  const hb = HEAT_ORDER[b.heat] ?? 2;
+  if (ha !== hb) return ha - hb;
+  return b.score - a.score;
+}
 
 const LANGUAGE_MAP = {
   en: 'English',
@@ -319,7 +326,12 @@ function extractQuotedCast(cast) {
 function buildSignals(casts, analyses, replyData) {
   return analyses
     .filter((a) => a.score >= 7)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      const ha = HEAT_ORDER[a.heat] ?? 2;
+      const hb = HEAT_ORDER[b.heat] ?? 2;
+      if (ha !== hb) return ha - hb;
+      return b.score - a.score;
+    })
     .map((analysis) => {
       const cast = casts[analysis.index];
       if (!cast) return null;
@@ -400,7 +412,7 @@ export default async function handler(req, res) {
       }
 
       const allSignals = [...watchlistSignals, ...cached.signals]
-        .sort((a, b) => b.score - a.score);
+        .sort(signalSort);
       const seen = new Set();
       const deduped = allSignals.filter((s) => {
         if (seen.has(s.hash)) return false;
