@@ -37,6 +37,17 @@ async function kvGet(key) {
   }
 }
 
+async function kvSet(key, value, ttlSeconds) {
+  const res = await fetch(`${KV_REST_API_URL}/set/${encodeURIComponent(key)}?EX=${ttlSeconds}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
+    body: value,
+  });
+  if (!res.ok) {
+    console.error('KV SET failed:', res.status, await res.text());
+  }
+}
+
 async function fetchGlobalTrending() {
   const res = await fetch(
     'https://api.neynar.com/v2/farcaster/feed/?feed_type=filter&filter_type=global_trending&limit=50',
@@ -368,23 +379,26 @@ export default async function handler(req, res) {
       return res.status(200).json(cached);
     }
 
-    // Has watchlist — use cached base signals + fetch only watchlist user casts
+    // Has watchlist — use cached base signals + cached watchlist signals
     if (cached && cached.signals && fids.length > 0) {
-      const userCasts = await fetchUserCasts(fids);
-      if (userCasts.length === 0) {
-        cached.meta = cached.meta || {};
-        cached.meta.cached = true;
-        return res.status(200).json(cached);
+      const watchlistCacheKey = `signals:watchlist:${fids.sort().join(',')}:${lang}`;
+      const watchlistCached = await kvGet(watchlistCacheKey);
+
+      let watchlistSignals = [];
+      if (watchlistCached && watchlistCached.signals) {
+        watchlistSignals = watchlistCached.signals;
+      } else {
+        // No watchlist cache — fetch and cache for 30 min
+        const userCasts = await fetchUserCasts(fids);
+        const filtered = basicFilter(userCasts);
+        const unique = deduplicate(filtered);
+        if (unique.length > 0) {
+          const { analyses, replyData } = await analyzeWithGemini(unique, lang);
+          watchlistSignals = buildSignals(unique, analyses, replyData);
+          await kvSet(watchlistCacheKey, JSON.stringify({ signals: watchlistSignals }), 1800);
+        }
       }
-      const filtered = basicFilter(userCasts);
-      const unique = deduplicate(filtered);
-      if (unique.length === 0) {
-        cached.meta = cached.meta || {};
-        cached.meta.cached = true;
-        return res.status(200).json(cached);
-      }
-      const { analyses, replyData } = await analyzeWithGemini(unique, lang);
-      const watchlistSignals = buildSignals(unique, analyses, replyData);
+
       const allSignals = [...watchlistSignals, ...cached.signals]
         .sort((a, b) => b.score - a.score);
       const seen = new Set();
