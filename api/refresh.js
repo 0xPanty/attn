@@ -65,7 +65,7 @@ async function updateAuthorStats(signals) {
 
 async function fetchGlobalTrending() {
   const res = await fetch(
-    'https://api.neynar.com/v2/farcaster/feed/?feed_type=filter&filter_type=global_trending&limit=100',
+    'https://api.neynar.com/v2/farcaster/feed/?feed_type=filter&filter_type=global_trending&limit=50',
     { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
   );
   if (!res.ok) return [];
@@ -143,7 +143,7 @@ async function fetchTopReplies(castHash, limit = 5) {
 
     const [repliesRes, quotesRes] = await Promise.all([
       fetch(`https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=20`, { headers: neynarHeaders }),
-      fetch(`https://api.neynar.com/v2/farcaster/cast/quotes?hash=${castHash}&limit=15`, { headers: neynarHeaders }),
+      fetch(`https://api.neynar.com/v2/farcaster/cast/quotes/${castHash}?limit=15`, { headers: neynarHeaders }),
     ]);
 
     const replies = repliesRes.ok ? (await repliesRes.json()).conversation?.cast?.direct_replies || [] : [];
@@ -384,7 +384,7 @@ export default async function handler(req, res) {
         },
       });
 
-      await kvSet(`signals:${lang}`, cacheData, 2400);
+      await kvSet(`signals:${lang}`, cacheData, 10800);
     }
 
     await updateAuthorStats(firstSignals);

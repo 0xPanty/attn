@@ -39,7 +39,7 @@ async function kvGet(key) {
 
 async function fetchGlobalTrending() {
   const res = await fetch(
-    'https://api.neynar.com/v2/farcaster/feed/?feed_type=filter&filter_type=global_trending&limit=100',
+    'https://api.neynar.com/v2/farcaster/feed/?feed_type=filter&filter_type=global_trending&limit=50',
     { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
   );
   if (!res.ok) return [];
@@ -147,7 +147,7 @@ async function fetchTopReplies(castHash, limit = 5) {
 
     const [repliesRes, quotesRes] = await Promise.all([
       fetch(`https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=20`, { headers: neynarHeaders }),
-      fetch(`https://api.neynar.com/v2/farcaster/cast/quotes?hash=${castHash}&limit=15`, { headers: neynarHeaders }),
+      fetch(`https://api.neynar.com/v2/farcaster/cast/quotes/${castHash}?limit=15`, { headers: neynarHeaders }),
     ]);
 
     const replies = repliesRes.ok ? (await repliesRes.json()).conversation?.cast?.direct_replies || [] : [];
@@ -258,7 +258,7 @@ ${castTexts}`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 4096 },
+        generationConfig: { temperature: 0, maxOutputTokens: 8192 },
       }),
     }
   );
@@ -360,17 +360,43 @@ export default async function handler(req, res) {
     const lang = req.query.lang || 'en';
     const fids = req.query.fids ? req.query.fids.split(',').map(Number).filter(Boolean) : [];
 
-    // If no watchlist, try cache first
-    if (fids.length === 0) {
-      const cached = await kvGet(`signals:${lang}`);
-      if (cached && cached.signals) {
+    // Try cache first
+    const cached = await kvGet(`signals:${lang}`);
+    if (cached && cached.signals && fids.length === 0) {
+      cached.meta = cached.meta || {};
+      cached.meta.cached = true;
+      return res.status(200).json(cached);
+    }
+
+    // Has watchlist — use cached base signals + fetch only watchlist user casts
+    if (cached && cached.signals && fids.length > 0) {
+      const userCasts = await fetchUserCasts(fids);
+      if (userCasts.length === 0) {
         cached.meta = cached.meta || {};
         cached.meta.cached = true;
         return res.status(200).json(cached);
       }
+      const filtered = basicFilter(userCasts);
+      const unique = deduplicate(filtered);
+      if (unique.length === 0) {
+        cached.meta = cached.meta || {};
+        cached.meta.cached = true;
+        return res.status(200).json(cached);
+      }
+      const { analyses, replyData } = await analyzeWithGemini(unique, lang);
+      const watchlistSignals = buildSignals(unique, analyses, replyData);
+      const allSignals = [...watchlistSignals, ...cached.signals]
+        .sort((a, b) => b.score - a.score);
+      const seen = new Set();
+      const deduped = allSignals.filter((s) => {
+        if (seen.has(s.hash)) return false;
+        seen.add(s.hash);
+        return true;
+      });
+      return res.status(200).json({ signals: deduped, meta: { ...cached.meta, cached: true, watchlistFids: fids } });
     }
 
-    // No cache or has watchlist fids — fetch live
+    // No cache at all — full live fetch
     const [trendingCasts, channelCasts, userCasts] = await Promise.all([
       fetchGlobalTrending(),
       Promise.all(CHANNELS.map(fetchChannelCasts)).then((r) => r.flat()),
