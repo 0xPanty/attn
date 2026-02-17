@@ -10,8 +10,7 @@ const LANGUAGE_MAP = {
   zh: 'Chinese (Simplified)',
   ja: 'Japanese',
   ko: 'Korean',
-  es: 'Spanish',
-  fr: 'French',
+  fa: 'Persian (Farsi)',
 };
 
 // --- Try reading from KV cache first ---
@@ -96,6 +95,8 @@ function basicFilter(casts) {
     if (emojiOnly.test(text)) return false;
     const castTime = new Date(cast.timestamp || 0).getTime();
     if (castTime < oneDayAgo) return false;
+    const neynarScore = cast.author?.experimental?.neynar_user_score ?? 1;
+    if (neynarScore < 0.5) return false;
     return true;
   });
 }
@@ -142,12 +143,68 @@ function stratifiedSample(casts) {
   return [...top, ...rest.slice(0, 5)];
 }
 
+async function fetchTopReplies(castHash, limit = 5) {
+  try {
+    const data = await fetch(
+      `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=20`,
+      { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
+    );
+    if (!data.ok) return { forGemini: [], structured: [] };
+    const json = await data.json();
+    const replies = json.conversation?.cast?.direct_replies || [];
+    const sorted = replies
+      .sort((a, b) => (b.author?.follower_count || 0) - (a.author?.follower_count || 0))
+      .slice(0, limit);
+
+    const structured = sorted.map((r) => {
+      const followers = r.author?.follower_count || 0;
+      const nScore = r.author?.experimental?.neynar_user_score ?? 0;
+      const isKol = followers >= 50000 && nScore >= 0.9;
+      return {
+        username: r.author?.username || '?',
+        followers,
+        text: (r.text || '').slice(0, 150),
+        isKol,
+      };
+    });
+
+    const forGemini = sorted.map((r) => {
+      const followers = r.author?.follower_count || 0;
+      const nScore = r.author?.experimental?.neynar_user_score ?? 0;
+      const tag = (followers >= 50000 && nScore >= 0.9) ? '[KOL]' : followers >= 5000 ? '[notable]' : '';
+      return `  ${tag}@${r.author?.username || '?'} (${followers} followers, credibility:${nScore.toFixed(2)}): ${(r.text || '').slice(0, 150)}`;
+    });
+
+    return { forGemini, structured };
+  } catch {
+    return { forGemini: [], structured: [] };
+  }
+}
+
 async function analyzeWithGemini(casts, targetLang) {
-  if (casts.length === 0) return [];
+  if (casts.length === 0) return { analyses: [], replyData: {} };
   const castsForAnalysis = casts.slice(0, 30);
-  const castTexts = castsForAnalysis.map((c, i) => (
-    `[${i}] @${c.author?.username || 'unknown'} (/${c._channel}):\n${c.text}\n---`
-  )).join('\n');
+
+  const highEngagement = castsForAnalysis.filter((c) => (c.replies?.count || 0) >= 5);
+  const replyData = {};
+  await Promise.all(
+    highEngagement.slice(0, 10).map(async (c) => {
+      replyData[c.hash] = await fetchTopReplies(c.hash);
+    })
+  );
+
+  const castTexts = castsForAnalysis.map((c, i) => {
+    const likes = c.reactions?.likes_count || 0;
+    const replies = c.replies?.count || 0;
+    const recasts = c.reactions?.recasts_count || 0;
+    let text = `[${i}] @${c.author?.username || 'unknown'} (/${c._channel}) [♥${likes} 💬${replies} 🔁${recasts}]:\n${c.text}`;
+    const rd = replyData[c.hash];
+    if (rd && rd.forGemini.length > 0) {
+      text += `\n[Top replies from community]\n${rd.forGemini.join('\n')}`;
+    }
+    text += '\n---';
+    return text;
+  }).join('\n');
 
   const langName = LANGUAGE_MAP[targetLang] || 'English';
   const needsTranslation = targetLang !== 'en';
@@ -160,13 +217,18 @@ Your job:
 1. Score each post 1-10 for "information density" (10 = very valuable technical insight, announcement, analysis; 1 = casual chat, self-promotion, no substance)
    Score 1-3 for: airdrops, token promotions, "follow these accounts", shill posts, giveaways, hashtag spam, referral links, anything asking users to claim/mint/buy tokens, selling source code or IP, "DM me", self-promotional product launches disguised as technical posts, AI-generated summaries of other people's content without original insight, pure news reposting with bullet points but no personal analysis
 2. For posts scoring 7+, write a concise 2-3 sentence English summary
-${needsTranslation ? `3. Translate each summary to ${langName}` : ''}
+3. For posts scoring 7+, assign a "heat" level based on EVENT SEVERITY. Use BOTH the post content AND community replies + engagement metrics to judge:
+   - "red": security incidents, hacks, exploits, scams, account compromises, protocol failures, rug pulls. IMPORTANT: even if the original post looks normal, check community replies. Mark RED only when ALL conditions are met: (1) at least 1 [KOL] user (50k+ followers, credibility ≥ 0.9 — these are genuinely well-known Farcaster figures, not just mutual-follow accounts) confirms the issue, AND (2) at least 2 other users corroborate. Without KOL confirmation, use yellow at most.
+   - "yellow": important announcements, major launches, significant debates, controversial decisions, breaking news. Posts with unusually high engagement relative to content = worth flagging yellow.
+   - "green": normal high-quality content, technical insights, tutorials, thoughtful analysis
+${needsTranslation ? `4. Translate each summary to ${langName}` : ''}
 
 Return ONLY valid JSON array, no markdown:
 [
   {
     "index": 0,
     "score": 8,
+    "heat": "green",
     "summary": "English summary here"${needsTranslation ? `,
     "translatedSummary": "${langName} translation here"` : ''}
   }
@@ -189,15 +251,15 @@ ${castTexts}`;
     }
   );
 
-  if (!res.ok) return [];
+  if (!res.ok) return { analyses: [], replyData };
   const data = await res.json();
   const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   try {
     const cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const results = JSON.parse(cleaned);
-    return Array.isArray(results) ? results : [];
+    return { analyses: Array.isArray(results) ? results : [], replyData };
   } catch {
-    return [];
+    return { analyses: [], replyData };
   }
 }
 
@@ -230,7 +292,7 @@ function extractQuotedCast(cast) {
   return null;
 }
 
-function buildSignals(casts, analyses) {
+function buildSignals(casts, analyses, replyData) {
   return analyses
     .filter((a) => a.score >= 7)
     .sort((a, b) => b.score - a.score)
@@ -238,6 +300,9 @@ function buildSignals(casts, analyses) {
     .map((analysis) => {
       const cast = casts[analysis.index];
       if (!cast) return null;
+      const likes = cast.reactions?.likes_count || 0;
+      const replies = cast.replies?.count || 0;
+      const recasts = cast.reactions?.recasts_count || 0;
       return {
         id: cast.hash,
         hash: cast.hash,
@@ -252,9 +317,16 @@ function buildSignals(casts, analyses) {
         translatedSummary: analysis.translatedSummary || null,
         channel: cast._channel || 'unknown',
         score: analysis.score,
-        likes: cast.reactions?.likes_count || 0,
-        replies: cast.replies?.count || 0,
-        recasts: cast.reactions?.recasts_count || 0,
+        heat: ['red', 'yellow', 'green'].includes(analysis.heat) ? analysis.heat : 'green',
+        communityReactions: (() => {
+          const h = ['red', 'yellow', 'green'].includes(analysis.heat) ? analysis.heat : 'green';
+          if (h === 'green') return undefined;
+          const rd = replyData[cast.hash];
+          return rd?.structured?.length > 0 ? rd.structured : undefined;
+        })(),
+        likes,
+        replies,
+        recasts,
         timestamp: cast.timestamp || new Date().toISOString(),
         originalUrl: `https://warpcast.com/${cast.author?.username || 'unknown'}/${cast.hash?.slice(0, 10) || ''}`,
         images: extractImages(cast),
@@ -292,8 +364,8 @@ export default async function handler(req, res) {
     const filtered = basicFilter(allCasts);
     const unique = deduplicate(filtered);
     const candidates = stratifiedSample(unique);
-    const analyses = await analyzeWithGemini(candidates, lang);
-    const signals = buildSignals(candidates, analyses);
+    const { analyses, replyData } = await analyzeWithGemini(candidates, lang);
+    const signals = buildSignals(candidates, analyses, replyData);
 
     return res.status(200).json({
       signals,

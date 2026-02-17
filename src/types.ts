@@ -12,6 +12,13 @@ export interface Signal {
   translatedSummary?: string;
   channel: string;
   score: number;
+  heat: 'red' | 'yellow' | 'green';
+  communityReactions?: {
+    username: string;
+    followers: number;
+    text: string;
+    isKol: boolean;
+  }[];
   likes: number;
   replies: number;
   recasts: number;
@@ -29,15 +36,14 @@ export interface Signal {
   } | null;
 }
 
-export type Language = 'en' | 'zh' | 'ja' | 'ko' | 'es' | 'fr';
+export type Language = 'en' | 'zh' | 'ja' | 'ko' | 'fa';
 
 export const LANGUAGE_LABELS: Record<Language, string> = {
   en: 'English',
   zh: '中文',
   ja: '日本語',
   ko: '한국어',
-  es: 'Español',
-  fr: 'Français',
+  fa: 'فارسی',
 };
 
 export const CHANNELS = ['dev', 'ai', 'miniapps', 'build'] as const;

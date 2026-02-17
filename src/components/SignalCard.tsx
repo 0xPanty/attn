@@ -28,12 +28,37 @@ export function SignalCard({ signal, language }: SignalCardProps) {
           <span className="text-sm font-mono text-white/20">/{signal.channel}</span>
           <span className="text-sm text-white/15">·</span>
           <span className="text-sm text-white/20">{timeAgo}</span>
+          <span
+            className={`ml-auto w-2.5 h-2.5 rounded-full shrink-0 ${
+              signal.heat === 'red'
+                ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]'
+                : signal.heat === 'yellow'
+                ? 'bg-yellow-400 shadow-[0_0_6px_rgba(250,204,21,0.4)]'
+                : 'bg-emerald-400/60'
+            }`}
+            title={signal.heat === 'red' ? 'Hot' : signal.heat === 'yellow' ? 'Warm' : 'Normal'}
+          />
         </div>
 
         <div className="mb-2">
           <span className="text-[11px] uppercase tracking-wider text-white/15">AI Summary</span>
         </div>
-        <p className="text-base text-white/85 leading-7 mb-5">{summary}</p>
+        <p className="text-base text-white/85 leading-7 mb-5 break-words overflow-hidden">{summary}</p>
+
+        {signal.communityReactions && signal.communityReactions.length > 0 && (
+          <div className="mb-5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+            <span className="text-[11px] uppercase tracking-wider text-white/25 block mb-2.5">Community</span>
+            <div className="space-y-2">
+              {signal.communityReactions.map((r, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm">
+                  {r.isKol && <span className="shrink-0 text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-medium">KOL</span>}
+                  <span className="text-white/40 shrink-0">@{r.username}</span>
+                  <span className="text-white/60 break-words">{r.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <button
           onClick={() => setShowOriginal(!showOriginal)}
@@ -45,7 +70,9 @@ export function SignalCard({ signal, language }: SignalCardProps) {
 
         {showOriginal && (
           <div className="mb-4 pl-3 border-l border-white/10">
-            <p className="text-[15px] text-white/60 leading-relaxed whitespace-pre-wrap">{signal.text}</p>
+            <p className="text-[15px] text-white/60 leading-relaxed whitespace-pre-wrap overflow-hidden">
+              {signal.text.replace(/https?:\/\/\S+/g, '').trim()}
+            </p>
             {language !== 'en' && !translatedText && (
               <button
                 onClick={async () => {

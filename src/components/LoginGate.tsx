@@ -12,7 +12,7 @@ export const LoginGate: React.FC<{ children: React.ReactNode }> = ({ children })
     );
   }
 
-  if (!user) {
+  if (!user && import.meta.env.PROD) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center bg-black px-8 text-center">
         <h1 className="font-mono text-2xl font-medium text-white mb-1">
