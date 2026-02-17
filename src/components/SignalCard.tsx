@@ -50,11 +50,17 @@ export function SignalCard({ signal, language }: SignalCardProps) {
             <span className="text-[11px] uppercase tracking-wider text-white/25 block mb-2.5">Community</span>
             <div className="space-y-2">
               {signal.communityReactions.map((r, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm">
+                <a
+                  key={i}
+                  href={`https://warpcast.com/${r.username}/${r.hash?.slice(0, 10) || ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start gap-2 text-sm hover:bg-white/[0.03] rounded px-1 -mx-1 py-0.5 transition-colors cursor-pointer"
+                >
                   {r.isKol && <span className="shrink-0 text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-medium">KOL</span>}
                   <span className="text-white/40 shrink-0">@{r.username}</span>
-                  <span className="text-white/60 break-words">{r.text}</span>
-                </div>
+                  <span className="text-white/60 break-words">{(language !== 'en' && r.translatedText) ? r.translatedText : r.text}</span>
+                </a>
               ))}
             </div>
           </div>

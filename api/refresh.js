@@ -4,15 +4,14 @@ const KV_REST_API_URL = process.env.KV_REST_API_URL;
 const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN;
 
 const CHANNELS = ['dev', 'ai', 'miniapps', 'build'];
-const LANGUAGES = ['en', 'zh'];
+const LANGUAGES = ['en', 'zh', 'ja', 'ko', 'fa'];
 
 const LANGUAGE_MAP = {
   en: 'English',
   zh: 'Chinese (Simplified)',
   ja: 'Japanese',
   ko: 'Korean',
-  es: 'Spanish',
-  fr: 'French',
+  fa: 'Persian (Farsi)',
 };
 
 async function kvGet(key) {
@@ -36,6 +35,17 @@ async function kvGet(key) {
   }
 }
 
+async function kvSet(key, value, ttlSeconds) {
+  const res = await fetch(`${KV_REST_API_URL}/set/${encodeURIComponent(key)}?EX=${ttlSeconds}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
+    body: value,
+  });
+  if (!res.ok) {
+    console.error('KV SET failed:', res.status, await res.text());
+  }
+}
+
 async function updateAuthorStats(signals) {
   if (!signals || signals.length === 0) return;
   const existing = (await kvGet('stats:authors')) || {};
@@ -50,19 +60,7 @@ async function updateAuthorStats(signals) {
     existing[fid].username = s.author.username;
     existing[fid].displayName = s.author.displayName;
   }
-  // Keep stats for 30 days
   await kvSet('stats:authors', JSON.stringify(existing), 30 * 24 * 60 * 60);
-}
-
-async function kvSet(key, value, ttlSeconds) {
-  const res = await fetch(`${KV_REST_API_URL}/set/${encodeURIComponent(key)}?EX=${ttlSeconds}`, {
-    method: 'PUT',
-    headers: { Authorization: `Bearer ${KV_REST_API_TOKEN}`, 'Content-Type': 'application/json' },
-    body: value,
-  });
-  if (!res.ok) {
-    console.error('KV SET failed:', res.status, await res.text());
-  }
 }
 
 async function fetchGlobalTrending() {
@@ -70,22 +68,21 @@ async function fetchGlobalTrending() {
     'https://api.neynar.com/v2/farcaster/feed/?feed_type=filter&filter_type=global_trending&limit=100',
     { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
   );
-  if (!res.ok) {
-    console.error('Global trending fetch failed:', res.status);
-    return [];
-  }
+  if (!res.ok) return [];
   const data = await res.json();
   return (data.casts || []).map((cast) => ({ ...cast, _channel: 'trending' }));
 }
 
 async function fetchChannelCasts(channel) {
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const res = await fetch(
-    `https://api.neynar.com/v2/farcaster/feed/channels?channel_ids=${channel}&with_recasts=false&limit=50`,
+    `https://api.neynar.com/v2/farcaster/feed/channels?channel_ids=${channel}&with_recasts=false&limit=15`,
     { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
   );
   if (!res.ok) return [];
   const data = await res.json();
-  return (data.casts || []).map((cast) => ({ ...cast, _channel: channel }));
+  const casts = (data.casts || []).map((cast) => ({ ...cast, _channel: channel }));
+  return casts.filter((c) => new Date(c.timestamp || 0).getTime() > oneDayAgo);
 }
 
 function basicFilter(casts) {
@@ -99,6 +96,8 @@ function basicFilter(casts) {
     if (emojiOnly.test(text)) return false;
     const castTime = new Date(cast.timestamp || 0).getTime();
     if (castTime < oneDayAgo) return false;
+    const neynarScore = cast.author?.experimental?.neynar_user_score ?? 1;
+    if (neynarScore < 0.5) return false;
     return true;
   });
 }
@@ -122,54 +121,100 @@ function engagementScore(cast) {
 function stratifiedSample(casts) {
   const channelCasts = casts.filter((c) => c._channel !== 'trending' && c._channel !== 'following');
   const trendingCasts = casts.filter((c) => c._channel === 'trending');
-  const userCasts = casts.filter((c) => c._channel === 'following');
 
   const sortByEng = (a, b) => engagementScore(b) - engagementScore(a);
   channelCasts.sort(sortByEng);
   trendingCasts.sort(sortByEng);
-  userCasts.sort(sortByEng);
 
   const sampled = [
     ...channelCasts.slice(0, 15),
     ...trendingCasts.slice(0, 10),
-    ...userCasts.slice(0, 5),
   ];
 
   sampled.sort(sortByEng);
-  const top = sampled.slice(0, 25);
-  const rest = sampled.slice(25);
-  for (let i = rest.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [rest[i], rest[j]] = [rest[j], rest[i]];
-  }
-  return [...top, ...rest.slice(0, 5)];
+  return sampled.slice(0, 30);
 }
 
-async function analyzeWithGemini(casts, languages) {
-  if (casts.length === 0) return {};
+async function fetchTopReplies(castHash, limit = 5) {
+  try {
+    const res = await fetch(
+      `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=20`,
+      { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
+    );
+    if (!res.ok) return { forGemini: [], structured: [] };
+    const json = await res.json();
+    const replies = json.conversation?.cast?.direct_replies || [];
+    const sorted = replies
+      .sort((a, b) => (b.author?.follower_count || 0) - (a.author?.follower_count || 0))
+      .slice(0, limit);
+
+    const structured = sorted.map((r) => {
+      const followers = r.author?.follower_count || 0;
+      const nScore = r.author?.experimental?.neynar_user_score ?? 0;
+      const isKol = followers >= 50000 && nScore >= 0.9;
+      return {
+        username: r.author?.username || '?',
+        followers,
+        text: (r.text || '').slice(0, 150),
+        isKol,
+        hash: r.hash || '',
+      };
+    });
+
+    const forGemini = sorted.map((r) => {
+      const followers = r.author?.follower_count || 0;
+      const nScore = r.author?.experimental?.neynar_user_score ?? 0;
+      const tag = (followers >= 50000 && nScore >= 0.9) ? '[KOL]' : followers >= 5000 ? '[notable]' : '';
+      return `  ${tag}@${r.author?.username || '?'} (${followers} followers, credibility:${nScore.toFixed(2)}): ${(r.text || '').slice(0, 150)}`;
+    });
+
+    return { forGemini, structured };
+  } catch {
+    return { forGemini: [], structured: [] };
+  }
+}
+
+async function analyzeWithGemini(casts, languages, replyData) {
+  if (casts.length === 0) return [];
   const castsForAnalysis = casts.slice(0, 30);
-  const castTexts = castsForAnalysis.map((c, i) => (
-    `[${i}] @${c.author?.username || 'unknown'} (/${c._channel}):\n${c.text}\n---`
-  )).join('\n');
+
+  const castTexts = castsForAnalysis.map((c, i) => {
+    const likes = c.reactions?.likes_count || 0;
+    const replies = c.replies?.count || 0;
+    const recasts = c.reactions?.recasts_count || 0;
+    let text = `[${i}] @${c.author?.username || 'unknown'} (/${c._channel}) [♥${likes} 💬${replies} 🔁${recasts}]:\n${c.text}`;
+    const rd = replyData[c.hash];
+    if (rd && rd.forGemini.length > 0) {
+      text += `\n[Top replies from community]\n${rd.forGemini.join('\n')}`;
+    }
+    text += '\n---';
+    return text;
+  }).join('\n');
 
   const transLangs = languages.filter((l) => l !== 'en');
-  const transFields = transLangs.map((l) => `"summary_${l}": "${LANGUAGE_MAP[l]} translation"`).join(',\n    ');
+  const transFields = transLangs.map((l) => `"summary_${l}": "${LANGUAGE_MAP[l]} translation",\n    "replies_${l}": ["${LANGUAGE_MAP[l]} translated reply 1", "..."]`).join(',\n    ');
 
   const prompt = `You are a signal analyst for Farcaster (a crypto social network).
 
-Below are ${castsForAnalysis.length} posts from trending feed, developer/AI channels, and followed users.
+Below are ${castsForAnalysis.length} posts from trending feed and developer/AI channels.
 
 Your job:
 1. Score each post 1-10 for "information density" (10 = very valuable technical insight, announcement, analysis; 1 = casual chat, self-promotion, no substance)
    Score 1-3 for: airdrops, token promotions, "follow these accounts", shill posts, giveaways, hashtag spam, referral links, anything asking users to claim/mint/buy tokens, selling source code or IP, "DM me", self-promotional product launches disguised as technical posts, AI-generated summaries of other people's content without original insight, pure news reposting with bullet points but no personal analysis
 2. For posts scoring 7+, write a concise 2-3 sentence English summary
-3. Translate each summary to: ${transLangs.map((l) => LANGUAGE_MAP[l]).join(', ')}
+3. For posts scoring 7+, assign a "heat" level based on EVENT SEVERITY. Use BOTH the post content AND community replies + engagement metrics to judge:
+   - "red": security incidents, hacks, exploits, scams, account compromises, protocol failures, rug pulls. IMPORTANT: even if the original post looks normal, check community replies. Mark RED only when ALL conditions are met: (1) at least 1 [KOL] user (50k+ followers, credibility ≥ 0.9 — these are genuinely well-known Farcaster figures, not just mutual-follow accounts) confirms the issue, AND (2) at least 2 other users corroborate. Without KOL confirmation, use yellow at most.
+   - "yellow": important announcements, major launches, significant debates, controversial decisions, breaking news. Posts with unusually high engagement relative to content = worth flagging yellow.
+   - "green": normal high-quality content, technical insights, tutorials, thoughtful analysis
+4. Translate each summary to: ${transLangs.map((l) => LANGUAGE_MAP[l]).join(', ')}
+5. For posts with heat "red" or "yellow" that have [Top replies], translate each reply text to all languages above. Include as "replies_LANG" arrays (same order as replies appear).
 
 Return ONLY valid JSON array, no markdown:
 [
   {
     "index": 0,
     "score": 8,
+    "heat": "green",
     "summary": "English summary here",
     ${transFields}
   }
@@ -187,20 +232,20 @@ ${castTexts}`;
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0, maxOutputTokens: 4096 },
+        generationConfig: { temperature: 0, maxOutputTokens: 8192 },
       }),
     }
   );
 
-  if (!res.ok) return {};
+  if (!res.ok) return [];
   const data = await res.json();
   const responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
   try {
     const cleaned = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
     const results = JSON.parse(cleaned);
-    return Array.isArray(results) ? results : {};
+    return Array.isArray(results) ? results : [];
   } catch {
-    return {};
+    return [];
   }
 }
 
@@ -219,12 +264,13 @@ function extractQuotedCast(cast) {
   for (const embed of (cast.embeds || [])) {
     if (embed.cast) {
       const qc = embed.cast;
+      if (!qc.author?.username) continue;
       return {
         hash: qc.hash || '',
         author: {
-          username: qc.author?.username || 'unknown',
-          displayName: qc.author?.display_name || qc.author?.displayName || 'Unknown',
-          pfpUrl: qc.author?.pfp_url || qc.author?.pfpUrl || '',
+          username: qc.author.username,
+          displayName: qc.author.display_name || qc.author.displayName || qc.author.username,
+          pfpUrl: qc.author.pfp_url || qc.author.pfpUrl || '',
         },
         text: qc.text || '',
       };
@@ -233,14 +279,17 @@ function extractQuotedCast(cast) {
   return null;
 }
 
-function buildSignals(casts, analyses) {
+function buildSignals(casts, analyses, replyData, lang) {
   return analyses
     .filter((a) => a.score >= 7)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
     .map((analysis) => {
       const cast = casts[analysis.index];
       if (!cast) return null;
+      const heat = ['red', 'yellow', 'green'].includes(analysis.heat) ? analysis.heat : 'green';
+      const likes = cast.reactions?.likes_count || 0;
+      const replies = cast.replies?.count || 0;
+      const recasts = cast.reactions?.recasts_count || 0;
       return {
         id: cast.hash,
         hash: cast.hash,
@@ -252,12 +301,23 @@ function buildSignals(casts, analyses) {
         },
         text: cast.text || '',
         summary: analysis.summary || '',
-        translatedSummary: analysis.translatedSummary || null,
+        translatedSummary: lang !== 'en' ? (analysis[`summary_${lang}`] || null) : null,
         channel: cast._channel || 'unknown',
         score: analysis.score,
-        likes: cast.reactions?.likes_count || 0,
-        replies: cast.replies?.count || 0,
-        recasts: cast.reactions?.recasts_count || 0,
+        heat,
+        communityReactions: (() => {
+          if (heat === 'green') return undefined;
+          const rd = replyData[cast.hash];
+          if (!rd?.structured?.length) return undefined;
+          const translated = (lang !== 'en' ? analysis[`replies_${lang}`] : null) || [];
+          return rd.structured.map((r, i) => ({
+            ...r,
+            translatedText: translated[i] || null,
+          }));
+        })(),
+        likes,
+        replies,
+        recasts,
         timestamp: cast.timestamp || new Date().toISOString(),
         originalUrl: `https://warpcast.com/${cast.author?.username || 'unknown'}/${cast.hash?.slice(0, 10) || ''}`,
         images: extractImages(cast),
@@ -271,7 +331,6 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   try {
-    // Fetch trending + channel casts
     const [trendingCasts, ...channelResults] = await Promise.all([
       fetchGlobalTrending(),
       ...CHANNELS.map(fetchChannelCasts),
@@ -281,20 +340,22 @@ export default async function handler(req, res) {
     const unique = deduplicate(filtered);
     const candidates = stratifiedSample(unique);
 
-    // Single Gemini call for all languages
-    const analyses = await analyzeWithGemini(candidates, LANGUAGES);
+    const highEngagement = candidates.filter((c) => (c.replies?.count || 0) >= 5);
+    const replyData = {};
+    await Promise.all(
+      highEngagement.slice(0, 10).map(async (c) => {
+        replyData[c.hash] = await fetchTopReplies(c.hash);
+      })
+    );
+
+    const analyses = await analyzeWithGemini(candidates, LANGUAGES, replyData);
     if (!Array.isArray(analyses)) {
       return res.status(500).json({ error: 'Gemini analysis failed' });
     }
 
-    // Build and cache signals for each language
     let firstSignals = [];
     for (const lang of LANGUAGES) {
-      const langAnalyses = analyses.map((a) => ({
-        ...a,
-        translatedSummary: lang !== 'en' ? (a[`summary_${lang}`] || null) : null,
-      }));
-      const signals = buildSignals(candidates, langAnalyses);
+      const signals = buildSignals(candidates, analyses, replyData, lang);
       if (lang === LANGUAGES[0]) firstSignals = signals;
 
       const cacheData = JSON.stringify({
@@ -313,12 +374,12 @@ export default async function handler(req, res) {
       await kvSet(`signals:${lang}`, cacheData, 2400);
     }
 
-    // Track author stats
     await updateAuthorStats(firstSignals);
 
     return res.status(200).json({
       success: true,
       languages: LANGUAGES,
+      signalCount: firstSignals.length,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {

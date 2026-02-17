@@ -49,13 +49,15 @@ async function fetchGlobalTrending() {
 
 // --- Fallback: live fetch if no cache ---
 async function fetchChannelCasts(channel) {
+  const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
   const res = await fetch(
-    `https://api.neynar.com/v2/farcaster/feed/channels?channel_ids=${channel}&with_recasts=false&limit=50`,
+    `https://api.neynar.com/v2/farcaster/feed/channels?channel_ids=${channel}&with_recasts=false&limit=15`,
     { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
   );
   if (!res.ok) return [];
   const data = await res.json();
-  return (data.casts || []).map((cast) => ({ ...cast, _channel: channel }));
+  const casts = (data.casts || []).map((cast) => ({ ...cast, _channel: channel }));
+  return casts.filter((c) => new Date(c.timestamp || 0).getTime() > oneDayAgo);
 }
 
 async function fetchUserCasts(fids) {
@@ -134,23 +136,17 @@ function stratifiedSample(casts) {
   ];
 
   sampled.sort(sortByEng);
-  const top = sampled.slice(0, 25);
-  const rest = sampled.slice(25);
-  for (let i = rest.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [rest[i], rest[j]] = [rest[j], rest[i]];
-  }
-  return [...top, ...rest.slice(0, 5)];
+  return sampled.slice(0, 30);
 }
 
 async function fetchTopReplies(castHash, limit = 5) {
   try {
-    const data = await fetch(
+    const res = await fetch(
       `https://api.neynar.com/v2/farcaster/cast/conversation?identifier=${castHash}&type=hash&reply_depth=1&limit=20`,
       { headers: { accept: 'application/json', 'x-api-key': NEYNAR_API_KEY } }
     );
-    if (!data.ok) return { forGemini: [], structured: [] };
-    const json = await data.json();
+    if (!res.ok) return { forGemini: [], structured: [] };
+    const json = await res.json();
     const replies = json.conversation?.cast?.direct_replies || [];
     const sorted = replies
       .sort((a, b) => (b.author?.follower_count || 0) - (a.author?.follower_count || 0))
@@ -165,6 +161,7 @@ async function fetchTopReplies(castHash, limit = 5) {
         followers,
         text: (r.text || '').slice(0, 150),
         isKol,
+        hash: r.hash || '',
       };
     });
 
@@ -221,7 +218,8 @@ Your job:
    - "red": security incidents, hacks, exploits, scams, account compromises, protocol failures, rug pulls. IMPORTANT: even if the original post looks normal, check community replies. Mark RED only when ALL conditions are met: (1) at least 1 [KOL] user (50k+ followers, credibility ≥ 0.9 — these are genuinely well-known Farcaster figures, not just mutual-follow accounts) confirms the issue, AND (2) at least 2 other users corroborate. Without KOL confirmation, use yellow at most.
    - "yellow": important announcements, major launches, significant debates, controversial decisions, breaking news. Posts with unusually high engagement relative to content = worth flagging yellow.
    - "green": normal high-quality content, technical insights, tutorials, thoughtful analysis
-${needsTranslation ? `4. Translate each summary to ${langName}` : ''}
+${needsTranslation ? `4. Translate each summary to ${langName}
+5. For posts with heat "red" or "yellow" that have [Top replies], translate each reply text to ${langName} and include as "translatedReplies" array (same order as replies appear)` : ''}
 
 Return ONLY valid JSON array, no markdown:
 [
@@ -230,7 +228,8 @@ Return ONLY valid JSON array, no markdown:
     "score": 8,
     "heat": "green",
     "summary": "English summary here"${needsTranslation ? `,
-    "translatedSummary": "${langName} translation here"` : ''}
+    "translatedSummary": "${langName} translation here",
+    "translatedReplies": ["translated reply 1", "translated reply 2"]` : ''}
   }
 ]
 
@@ -278,12 +277,13 @@ function extractQuotedCast(cast) {
   for (const embed of (cast.embeds || [])) {
     if (embed.cast) {
       const qc = embed.cast;
+      if (!qc.author?.username) continue;
       return {
         hash: qc.hash || '',
         author: {
-          username: qc.author?.username || 'unknown',
-          displayName: qc.author?.display_name || qc.author?.displayName || 'Unknown',
-          pfpUrl: qc.author?.pfp_url || qc.author?.pfpUrl || '',
+          username: qc.author.username,
+          displayName: qc.author.display_name || qc.author.displayName || qc.author.username,
+          pfpUrl: qc.author.pfp_url || qc.author.pfpUrl || '',
         },
         text: qc.text || '',
       };
@@ -296,7 +296,6 @@ function buildSignals(casts, analyses, replyData) {
   return analyses
     .filter((a) => a.score >= 7)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
     .map((analysis) => {
       const cast = casts[analysis.index];
       if (!cast) return null;
@@ -322,7 +321,12 @@ function buildSignals(casts, analyses, replyData) {
           const h = ['red', 'yellow', 'green'].includes(analysis.heat) ? analysis.heat : 'green';
           if (h === 'green') return undefined;
           const rd = replyData[cast.hash];
-          return rd?.structured?.length > 0 ? rd.structured : undefined;
+          if (!rd?.structured?.length) return undefined;
+          const translated = analysis.translatedReplies || [];
+          return rd.structured.map((r, i) => ({
+            ...r,
+            translatedText: translated[i] || null,
+          }));
         })(),
         likes,
         replies,

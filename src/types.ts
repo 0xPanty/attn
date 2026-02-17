@@ -17,7 +17,9 @@ export interface Signal {
     username: string;
     followers: number;
     text: string;
+    translatedText?: string | null;
     isKol: boolean;
+    hash: string;
   }[];
   likes: number;
   replies: number;
