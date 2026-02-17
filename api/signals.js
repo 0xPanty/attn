@@ -148,7 +148,12 @@ async function fetchTopReplies(castHash, limit = 5) {
     if (!res.ok) return { forGemini: [], structured: [] };
     const json = await res.json();
     const replies = json.conversation?.cast?.direct_replies || [];
+    const emojiOnly = /^[\p{Emoji}\p{Emoji_Presentation}\p{Emoji_Modifier}\p{Emoji_Component}\s]*$/u;
     const sorted = replies
+      .filter((r) => {
+        const text = (r.text || '').trim();
+        return text.length > 5 && !emojiOnly.test(text);
+      })
       .sort((a, b) => (b.author?.follower_count || 0) - (a.author?.follower_count || 0))
       .slice(0, limit);
 

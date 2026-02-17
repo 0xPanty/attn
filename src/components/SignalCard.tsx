@@ -46,21 +46,27 @@ export function SignalCard({ signal, language }: SignalCardProps) {
         <p className="text-base text-white/85 leading-7 mb-5 break-words overflow-hidden">{summary}</p>
 
         {signal.communityReactions && signal.communityReactions.length > 0 && (
-          <div className="mb-5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+          <div className="mb-5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 overflow-hidden">
             <span className="text-[11px] uppercase tracking-wider text-white/25 block mb-2.5">Community</span>
             <div className="space-y-2">
               {signal.communityReactions.map((r, i) => (
-                <a
+                <button
                   key={i}
-                  href={`https://warpcast.com/${r.username}/${r.hash?.slice(0, 10) || ''}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-start gap-2 text-sm hover:bg-white/[0.03] rounded px-1 -mx-1 py-0.5 transition-colors cursor-pointer"
+                  onClick={async () => {
+                    const url = `https://warpcast.com/${r.username}/${r.hash?.slice(0, 10) || ''}`;
+                    try {
+                      const { sdk } = await import('@farcaster/miniapp-sdk');
+                      await sdk.actions.openUrl({ url });
+                    } catch {
+                      window.open(url, '_blank');
+                    }
+                  }}
+                  className="flex items-start gap-2 text-sm hover:bg-white/[0.03] rounded px-1 -mx-1 py-0.5 transition-colors cursor-pointer text-left w-full"
                 >
                   {r.isKol && <span className="shrink-0 text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-medium">KOL</span>}
                   <span className="text-white/40 shrink-0">@{r.username}</span>
-                  <span className="text-white/60 break-words">{(language !== 'en' && r.translatedText) ? r.translatedText : r.text}</span>
-                </a>
+                  <span className="text-white/60 break-all">{(language !== 'en' && r.translatedText) ? r.translatedText : r.text}</span>
+                </button>
               ))}
             </div>
           </div>
