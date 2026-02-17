@@ -64,6 +64,7 @@ export function SignalCard({ signal, language }: SignalCardProps) {
                   className="flex items-start gap-2 text-sm hover:bg-white/[0.03] rounded px-1 -mx-1 py-0.5 transition-colors cursor-pointer text-left w-full"
                 >
                   {r.isKol && <span className="shrink-0 text-[10px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded font-medium">KOL</span>}
+                  {r.isQuote && <span className="shrink-0 text-[10px] bg-blue-500/20 text-blue-400 px-1.5 py-0.5 rounded font-medium">🔁</span>}
                   <span className="text-white/40 shrink-0">@{r.username}</span>
                   <span className="text-white/60 break-all">{(language !== 'en' && r.translatedText) ? r.translatedText : r.text}</span>
                 </button>

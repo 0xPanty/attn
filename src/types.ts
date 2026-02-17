@@ -19,6 +19,7 @@ export interface Signal {
     text: string;
     translatedText?: string | null;
     isKol: boolean;
+    isQuote?: boolean;
     hash: string;
   }[];
   likes: number;

@@ -1,15 +1,14 @@
 import { useState } from 'react';
-import { Globe, Users } from 'lucide-react';
+import { Globe, Info } from 'lucide-react';
 import { LANGUAGE_LABELS, type Language } from '@/types';
 
 interface HeaderProps {
   language: Language;
   onLanguageChange: (lang: Language) => void;
-  watchlistCount: number;
-  onWatchlistOpen: () => void;
+  onInfoOpen: () => void;
 }
 
-export function Header({ language, onLanguageChange, watchlistCount, onWatchlistOpen }: HeaderProps) {
+export function Header({ language, onLanguageChange, onInfoOpen }: HeaderProps) {
   const [showLangMenu, setShowLangMenu] = useState(false);
 
   return (
@@ -20,13 +19,10 @@ export function Header({ language, onLanguageChange, watchlistCount, onWatchlist
 
       <div className="flex items-center gap-3">
         <button
-          onClick={onWatchlistOpen}
+          onClick={onInfoOpen}
           className="flex items-center gap-1.5 text-sm text-white/60 hover:text-white transition-colors"
         >
-          <Users size={14} />
-          {watchlistCount > 0 && (
-            <span className="text-xs text-white/40">{watchlistCount}</span>
-          )}
+          <Info size={14} />
         </button>
 
         <div className="relative">

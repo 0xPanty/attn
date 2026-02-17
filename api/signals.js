@@ -168,8 +168,8 @@ async function fetchTopReplies(castHash, limit = 5) {
       fetch(`https://api.neynar.com/v2/farcaster/cast/quotes/${castHash}?limit=15`, { headers: neynarHeaders }),
     ]);
 
-    const replies = repliesRes.ok ? (await repliesRes.json()).conversation?.cast?.direct_replies || [] : [];
-    const quotes = quotesRes.ok ? (await quotesRes.json()).casts || [] : [];
+    const replies = (repliesRes.ok ? (await repliesRes.json()).conversation?.cast?.direct_replies || [] : []).map((r) => ({ ...r, _isQuote: false }));
+    const quotes = (quotesRes.ok ? (await quotesRes.json()).casts || [] : []).map((r) => ({ ...r, _isQuote: true }));
 
     const all = [...replies, ...quotes];
     const seen = new Set();
@@ -192,6 +192,7 @@ async function fetchTopReplies(castHash, limit = 5) {
         followers,
         text: (r.text || '').slice(0, 150),
         isKol,
+        isQuote: !!r._isQuote,
         hash: r.hash || '',
       };
     });
@@ -200,7 +201,8 @@ async function fetchTopReplies(castHash, limit = 5) {
       const followers = r.author?.follower_count || 0;
       const nScore = r.author?.experimental?.neynar_user_score ?? 0;
       const tag = (followers >= 50000 && nScore >= 0.9) ? '[KOL]' : followers >= 5000 ? '[notable]' : '';
-      return `  ${tag}@${r.author?.username || '?'} (${followers} followers, credibility:${nScore.toFixed(2)}): ${(r.text || '').slice(0, 150)}`;
+      const quoteTag = r._isQuote ? '[quote] ' : '';
+      return `  ${quoteTag}${tag}@${r.author?.username || '?'} (${followers} followers, credibility:${nScore.toFixed(2)}): ${(r.text || '').slice(0, 150)}`;
     });
 
     return { forGemini, structured };
@@ -393,7 +395,7 @@ export default async function handler(req, res) {
 
     // Has watchlist — use cached base signals + cached watchlist signals
     if (cached && cached.signals && fids.length > 0) {
-      const watchlistCacheKey = `signals:watchlist:${fids.sort().join(',')}:${lang}`;
+      const watchlistCacheKey = `signals:watchlist:${[...fids].sort().join(',')}:${lang}`;
       const watchlistCached = await kvGet(watchlistCacheKey);
 
       let watchlistSignals = [];
