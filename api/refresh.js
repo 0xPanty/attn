@@ -361,16 +361,18 @@ export default async function handler(req, res) {
     const allCasts = [...trendingCasts, ...channelResults.flat()];
     const filtered = basicFilter(allCasts);
     const unique = deduplicate(filtered);
-    const candidates = stratifiedSample(unique);
 
-    // 4. Only analyze NEW casts (not already scored)
-    const newCasts = candidates.filter((c) => !existingHashes.has(c.hash));
+    // 4. Only analyze NEW casts (not already in cache)
+    const newCasts = unique.filter((c) => !existingHashes.has(c.hash));
+    // Sort by engagement and cap at 30 for Gemini (cost control)
+    newCasts.sort((a, b) => engagementScore(b) - engagementScore(a));
+    const castsToAnalyze = newCasts.slice(0, 30);
 
     let newSignalsByLang = {};
     for (const lang of LANGUAGES) newSignalsByLang[lang] = [];
 
-    if (newCasts.length > 0) {
-      const highEngagement = newCasts.filter((c) => (c.replies?.count || 0) >= 5);
+    if (castsToAnalyze.length > 0) {
+      const highEngagement = castsToAnalyze.filter((c) => (c.replies?.count || 0) >= 5);
       const replyData = {};
       await Promise.all(
         highEngagement.slice(0, 10).map(async (c) => {
@@ -378,10 +380,10 @@ export default async function handler(req, res) {
         })
       );
 
-      const analyses = await analyzeWithGemini(newCasts, LANGUAGES, replyData);
+      const analyses = await analyzeWithGemini(castsToAnalyze, LANGUAGES, replyData);
       if (Array.isArray(analyses)) {
         for (const lang of LANGUAGES) {
-          newSignalsByLang[lang] = buildSignals(newCasts, analyses, replyData, lang);
+          newSignalsByLang[lang] = buildSignals(castsToAnalyze, analyses, replyData, lang);
         }
       }
     }
@@ -404,7 +406,7 @@ export default async function handler(req, res) {
         signals: deduped,
         meta: {
           totalFetched: allCasts.length,
-          newAnalyzed: newCasts.length,
+          newAnalyzed: castsToAnalyze.length,
           retained: stillValid.length,
           finalSignals: deduped.length,
           channels: CHANNELS,
